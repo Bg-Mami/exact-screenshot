@@ -1,43 +1,139 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
-import { TicketCard } from '@/components/TicketCard';
-import { QRTicket } from '@/components/QRTicket';
-import { useTicketStore } from '@/store/ticketStore';
-import { TICKET_TYPES, TicketType, Ticket } from '@/types/ticket';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { QRCodeSVG } from 'qrcode.react';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Printer, RefreshCw, X, Minus, Plus, ChevronLeft, ChevronRight, ShoppingCart, Trash2 } from 'lucide-react';
+import { Printer, RefreshCw, X, Minus, Plus, ChevronLeft, ChevronRight, ShoppingCart, Trash2, AlertTriangle, Clock } from 'lucide-react';
+
+interface TicketType {
+  id: string;
+  name: string;
+  type_key: string;
+  price: number;
+  color: string;
+  icon: string;
+  is_active: boolean;
+}
+
+interface Museum {
+  id: string;
+  name: string;
+}
+
+interface Session {
+  id: string;
+  museum_id: string;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  capacity: number;
+  sold_count: number;
+}
 
 interface CartItem {
-  type: TicketType;
+  ticketTypeId: string;
   quantity: number;
 }
 
-const SellTicket = () => {
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [generatedTickets, setGeneratedTickets] = useState<Ticket[]>([]);
-  const [currentTicketIndex, setCurrentTicketIndex] = useState(0);
-  const { addTicket, currentUser, staff } = useTicketStore();
+interface GeneratedTicket {
+  id: string;
+  qr_code: string;
+  price: number;
+  ticket_type: TicketType;
+  museum: Museum;
+  session?: Session;
+  created_at: string;
+}
 
-  const addToCart = (type: TicketType) => {
+const SellTicket = () => {
+  const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
+  const [museums, setMuseums] = useState<Museum[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [selectedMuseum, setSelectedMuseum] = useState<string>('');
+  const [selectedSession, setSelectedSession] = useState<string>('');
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [generatedTickets, setGeneratedTickets] = useState<GeneratedTicket[]>([]);
+  const [currentTicketIndex, setCurrentTicketIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [selling, setSelling] = useState(false);
+  const { user, profile } = useAuth();
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    if (selectedMuseum) {
+      fetchSessions(selectedMuseum);
+    } else {
+      setSessions([]);
+      setSelectedSession('');
+    }
+  }, [selectedMuseum]);
+
+  const fetchData = async () => {
+    const [typesRes, museumsRes] = await Promise.all([
+      supabase.from('ticket_types').select('*').eq('is_active', true).order('created_at'),
+      supabase.from('museums').select('*').eq('is_active', true).order('name'),
+    ]);
+
+    if (typesRes.error) toast.error('Bilet türleri yüklenemedi');
+    if (museumsRes.error) toast.error('Müzeler yüklenemedi');
+
+    setTicketTypes(typesRes.data || []);
+    setMuseums(museumsRes.data || []);
+    
+    // Auto-select first museum if only one
+    if (museumsRes.data?.length === 1) {
+      setSelectedMuseum(museumsRes.data[0].id);
+    }
+    
+    setLoading(false);
+  };
+
+  const fetchSessions = async (museumId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('museum_id', museumId)
+      .eq('session_date', today)
+      .eq('is_active', true)
+      .order('start_time');
+
+    if (error) {
+      toast.error('Seanslar yüklenemedi');
+    } else {
+      setSessions(data || []);
+    }
+  };
+
+  const addToCart = (ticketTypeId: string) => {
     setCart(prev => {
-      const existing = prev.find(item => item.type === type);
+      const existing = prev.find(item => item.ticketTypeId === ticketTypeId);
       if (existing) {
         return prev.map(item => 
-          item.type === type 
+          item.ticketTypeId === ticketTypeId 
             ? { ...item, quantity: Math.min(50, item.quantity + 1) }
             : item
         );
       }
-      return [...prev, { type, quantity: 1 }];
+      return [...prev, { ticketTypeId, quantity: 1 }];
     });
   };
 
-  const updateCartQuantity = (type: TicketType, delta: number) => {
+  const updateCartQuantity = (ticketTypeId: string, delta: number) => {
     setCart(prev => {
       return prev.map(item => {
-        if (item.type === type) {
+        if (item.ticketTypeId === ticketTypeId) {
           const newQuantity = item.quantity + delta;
           if (newQuantity <= 0) return null;
           return { ...item, quantity: Math.min(50, newQuantity) };
@@ -47,36 +143,97 @@ const SellTicket = () => {
     });
   };
 
-  const removeFromCart = (type: TicketType) => {
-    setCart(prev => prev.filter(item => item.type !== type));
+  const removeFromCart = (ticketTypeId: string) => {
+    setCart(prev => prev.filter(item => item.ticketTypeId !== ticketTypeId));
   };
 
   const clearCart = () => {
     setCart([]);
   };
 
-  const handleSell = () => {
+  const generateQRCode = (): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = 'TKT-';
+    for (let i = 0; i < 12; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
+  const handleSell = async () => {
     if (cart.length === 0) {
       toast.error('Lütfen sepete bilet ekleyin');
       return;
     }
 
-    const seller = currentUser?.name || staff.find(s => s.isActive)?.name || 'Sistem';
-    const tickets: Ticket[] = [];
-    
-    cart.forEach(item => {
-      for (let i = 0; i < item.quantity; i++) {
-        const ticket = addTicket(item.type, seller);
-        tickets.push(ticket);
+    if (!selectedMuseum) {
+      toast.error('Lütfen müze seçin');
+      return;
+    }
+
+    // Check session capacity if session selected
+    if (selectedSession) {
+      const session = sessions.find(s => s.id === selectedSession);
+      if (session) {
+        const remaining = session.capacity - session.sold_count;
+        if (totalTickets > remaining) {
+          toast.error(`Bu seansta sadece ${remaining} kişilik yer kaldı!`);
+          return;
+        }
       }
-    });
-    
-    setGeneratedTickets(tickets);
-    setCurrentTicketIndex(0);
-    
-    toast.success(`${totalTickets} adet bilet başarıyla satıldı!`, {
-      description: `Toplam: ₺${totalPrice}`,
-    });
+    }
+
+    setSelling(true);
+    const tickets: GeneratedTicket[] = [];
+    const museum = museums.find(m => m.id === selectedMuseum)!;
+    const session = sessions.find(s => s.id === selectedSession);
+
+    try {
+      for (const item of cart) {
+        const ticketType = ticketTypes.find(t => t.id === item.ticketTypeId)!;
+        
+        for (let i = 0; i < item.quantity; i++) {
+          const qrCode = generateQRCode();
+          
+          const { data, error } = await supabase.from('tickets').insert({
+            ticket_type_id: item.ticketTypeId,
+            museum_id: selectedMuseum,
+            session_id: selectedSession || null,
+            qr_code: qrCode,
+            price: ticketType.price,
+            sold_by: user!.id,
+          }).select().single();
+
+          if (error) throw error;
+
+          tickets.push({
+            id: data.id,
+            qr_code: data.qr_code,
+            price: data.price,
+            ticket_type: ticketType,
+            museum,
+            session,
+            created_at: data.created_at,
+          });
+        }
+      }
+
+      setGeneratedTickets(tickets);
+      setCurrentTicketIndex(0);
+      
+      toast.success(`${totalTickets} adet bilet başarıyla satıldı!`, {
+        description: `Toplam: ₺${totalPrice}`,
+      });
+
+      // Refresh sessions to update sold count
+      if (selectedSession) {
+        fetchSessions(selectedMuseum);
+      }
+    } catch (error: any) {
+      toast.error('Bilet satışı başarısız: ' + error.message);
+    } finally {
+      setSelling(false);
+    }
   };
 
   const handleNewSale = () => {
@@ -85,13 +242,23 @@ const SellTicket = () => {
     setCurrentTicketIndex(0);
   };
 
+  const getTicketTypeById = (id: string) => ticketTypes.find(t => t.id === id);
+
   const totalTickets = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => {
-    const typeInfo = TICKET_TYPES.find(t => t.type === item.type)!;
-    return sum + (typeInfo.price * item.quantity);
+    const ticketType = getTicketTypeById(item.ticketTypeId);
+    return sum + ((ticketType?.price || 0) * item.quantity);
   }, 0);
 
-  const getCartItemInfo = (type: TicketType) => TICKET_TYPES.find(t => t.type === type)!;
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -100,7 +267,7 @@ const SellTicket = () => {
         <div className="animate-fade-in">
           <h1 className="text-3xl font-bold text-foreground">Bilet Satış</h1>
           <p className="text-muted-foreground mt-1">
-            Bilet türlerini seçin, sepete ekleyin ve satışı tamamlayın
+            Müze ve seans seçin, biletleri sepete ekleyin
           </p>
         </div>
 
@@ -138,7 +305,18 @@ const SellTicket = () => {
               </div>
             )}
 
-            <QRTicket ticket={generatedTickets[currentTicketIndex]} size="lg" />
+            {/* Inline QR Ticket */}
+            <Card className="w-96 overflow-hidden">
+              <div className="p-4 text-center" style={{ backgroundColor: generatedTickets[currentTicketIndex].ticket_type.color }}>
+                <h3 className="text-lg font-bold text-white">{generatedTickets[currentTicketIndex].museum.name}</h3>
+                <p className="text-white/80 text-sm">{generatedTickets[currentTicketIndex].ticket_type.name}</p>
+              </div>
+              <CardContent className="p-6 flex flex-col items-center bg-white">
+                <QRCodeSVG value={generatedTickets[currentTicketIndex].qr_code} size={180} level="H" />
+                <p className="mt-3 text-lg font-mono font-bold tracking-wider">{generatedTickets[currentTicketIndex].qr_code}</p>
+                <p className="mt-2 text-2xl font-bold text-primary">₺{generatedTickets[currentTicketIndex].price}</p>
+              </CardContent>
+            </Card>
 
             <div className="flex gap-4 mt-8">
               <Button
@@ -160,42 +338,117 @@ const SellTicket = () => {
               </Button>
             </div>
 
-            {/* Print All Tickets (hidden for print) */}
-            <div className="hidden print:block">
-              {generatedTickets.map((ticket, index) => (
-                <div key={ticket.id} className={index > 0 ? 'page-break-before' : ''}>
-                  <QRTicket ticket={ticket} size="lg" />
-                </div>
-              ))}
-            </div>
           </div>
         ) : (
           /* Ticket Selection View */
           <div className="space-y-8">
-            {/* Ticket Types Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {TICKET_TYPES.map((type, index) => {
-                const cartItem = cart.find(item => item.type === type.type);
-                return (
-                  <div 
-                    key={type.type}
-                    style={{ animationDelay: `${index * 100}ms` }}
-                    className="animate-slide-up relative"
-                  >
-                    <TicketCard
-                      ticketType={type}
-                      isSelected={!!cartItem}
-                      onClick={() => addToCart(type.type)}
-                    />
-                    {cartItem && (
-                      <div className="absolute -top-2 -right-2 bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg animate-scale-in">
-                        {cartItem.quantity}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            {/* Museum & Session Selection */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Müze Seçin *</label>
+                <Select value={selectedMuseum} onValueChange={setSelectedMuseum}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Müze seçin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {museums.map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Seans (Opsiyonel)</label>
+                <Select 
+                  value={selectedSession} 
+                  onValueChange={setSelectedSession}
+                  disabled={!selectedMuseum || sessions.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={sessions.length === 0 ? 'Seans yok' : 'Seans seçin'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Seanssız</SelectItem>
+                    {sessions.map(s => {
+                      const remaining = s.capacity - s.sold_count;
+                      const isFull = remaining <= 0;
+                      return (
+                        <SelectItem key={s.id} value={s.id} disabled={isFull}>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
+                            {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}
+                            <Badge variant={isFull ? 'destructive' : 'secondary'}>
+                              {isFull ? 'DOLU' : `${remaining} kişi`}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            {/* Session Capacity Warning */}
+            {selectedSession && (() => {
+              const session = sessions.find(s => s.id === selectedSession);
+              if (session) {
+                const remaining = session.capacity - session.sold_count;
+                const percent = (session.sold_count / session.capacity) * 100;
+                if (percent >= 80) {
+                  return (
+                    <div className="bg-warning/10 border border-warning rounded-xl p-4 flex items-center gap-3 animate-fade-in">
+                      <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium text-warning">
+                          Bu seansta sadece {remaining} kişilik yer kaldı!
+                        </p>
+                        <Progress value={percent} className="h-2 mt-2" />
+                      </div>
+                    </div>
+                  );
+                }
+              }
+              return null;
+            })()}
+
+            {/* Ticket Types Grid */}
+            {museums.length === 0 ? (
+              <div className="bg-warning/10 border border-warning rounded-xl p-6 text-center">
+                <AlertTriangle className="w-8 h-8 text-warning mx-auto mb-2" />
+                <p className="text-warning font-medium">Önce Ayarlar'dan müze eklemeniz gerekiyor</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {ticketTypes.map((type, index) => {
+                  const cartItem = cart.find(item => item.ticketTypeId === type.id);
+                  return (
+                    <div 
+                      key={type.id}
+                      style={{ animationDelay: `${index * 100}ms` }}
+                      className="animate-slide-up relative cursor-pointer"
+                      onClick={() => selectedMuseum ? addToCart(type.id) : toast.error('Önce müze seçin')}
+                    >
+                      <Card className={`p-4 transition-all ${cartItem ? 'ring-2 ring-primary' : ''}`} style={{ borderLeftColor: type.color, borderLeftWidth: 4 }}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ backgroundColor: type.color }}>🎫</div>
+                          <div className="flex-1">
+                            <p className="font-medium">{type.name}</p>
+                            <p className="text-lg font-bold text-primary">₺{type.price}</p>
+                          </div>
+                        </div>
+                      </Card>
+                      {cartItem && (
+                        <div className="absolute -top-2 -right-2 bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg animate-scale-in">
+                          {cartItem.quantity}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Cart Section */}
             {cart.length > 0 && (
@@ -218,18 +471,24 @@ const SellTicket = () => {
 
                 <div className="space-y-3">
                   {cart.map(item => {
-                    const typeInfo = getCartItemInfo(item.type);
-                    const itemTotal = typeInfo.price * item.quantity;
+                    const ticketType = getTicketTypeById(item.ticketTypeId);
+                    if (!ticketType) return null;
+                    const itemTotal = ticketType.price * item.quantity;
                     return (
                       <div 
-                        key={item.type}
+                        key={item.ticketTypeId}
                         className="flex items-center justify-between bg-secondary/50 rounded-xl p-3"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl">{typeInfo.icon}</span>
+                          <span 
+                            className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-lg"
+                            style={{ backgroundColor: ticketType.color }}
+                          >
+                            🎫
+                          </span>
                           <div>
-                            <p className="font-medium text-foreground">{typeInfo.label}</p>
-                            <p className="text-sm text-muted-foreground">₺{typeInfo.price} / adet</p>
+                            <p className="font-medium text-foreground">{ticketType.name}</p>
+                            <p className="text-sm text-muted-foreground">₺{ticketType.price} / adet</p>
                           </div>
                         </div>
 
@@ -239,7 +498,7 @@ const SellTicket = () => {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => updateCartQuantity(item.type, -1)}
+                              onClick={() => updateCartQuantity(item.ticketTypeId, -1)}
                             >
                               <Minus className="w-3 h-3" />
                             </Button>
@@ -250,7 +509,7 @@ const SellTicket = () => {
                                 const newQty = parseInt(e.target.value) || 0;
                                 const diff = newQty - item.quantity;
                                 if (newQty > 0 && newQty <= 50) {
-                                  updateCartQuantity(item.type, diff);
+                                  updateCartQuantity(item.ticketTypeId, diff);
                                 }
                               }}
                               className="w-12 h-7 text-center bg-transparent border-0 font-bold"
@@ -261,7 +520,7 @@ const SellTicket = () => {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => updateCartQuantity(item.type, 1)}
+                              onClick={() => updateCartQuantity(item.ticketTypeId, 1)}
                               disabled={item.quantity >= 50}
                             >
                               <Plus className="w-3 h-3" />
@@ -276,7 +535,7 @@ const SellTicket = () => {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => removeFromCart(item.type)}
+                            onClick={() => removeFromCart(item.ticketTypeId)}
                           >
                             <X className="w-4 h-4" />
                           </Button>
@@ -312,10 +571,10 @@ const SellTicket = () => {
                 <Button
                   size="lg"
                   onClick={handleSell}
-                  disabled={cart.length === 0}
+                  disabled={cart.length === 0 || !selectedMuseum || selling}
                   className="px-8 gradient-primary border-0 disabled:opacity-50"
                 >
-                  {totalTickets > 1 ? `${totalTickets} Bilet Sat` : 'Satışı Tamamla'}
+                  {selling ? 'Satılıyor...' : totalTickets > 1 ? `${totalTickets} Bilet Sat` : 'Satışı Tamamla'}
                 </Button>
               </div>
             </div>
