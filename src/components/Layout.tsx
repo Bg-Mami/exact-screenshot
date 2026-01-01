@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Ticket, 
@@ -8,32 +8,36 @@ import {
   BarChart3, 
   Menu,
   X,
-  LogOut
+  LogOut,
+  Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useTicketStore } from '@/store/ticketStore';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/sell', label: 'Bilet Satış', icon: Ticket },
-  { path: '/validate', label: 'Bilet Doğrulama', icon: QrCode },
-  { path: '/reports', label: 'Raporlar', icon: BarChart3 },
-  { path: '/staff', label: 'Personel', icon: Users },
-];
-
 export const Layout = ({ children }: LayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const { currentUser, setCurrentUser } = useTicketStore();
+  const navigate = useNavigate();
+  const { profile, isAdmin, hasPermission, signOut } = useAuth();
 
-  const handleLogout = () => {
-    setCurrentUser(null);
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/auth');
   };
+
+  // Build nav items based on permissions
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard, show: true },
+    { path: '/sell', label: 'Bilet Satış', icon: Ticket, show: hasPermission('sell_tickets') },
+    { path: '/validate', label: 'Bilet Doğrulama', icon: QrCode, show: hasPermission('sell_tickets') },
+    { path: '/reports', label: 'Raporlar', icon: BarChart3, show: hasPermission('view_reports') },
+    { path: '/settings', label: 'Ayarlar', icon: Settings, show: isAdmin },
+  ].filter(item => item.show);
 
   return (
     <div className="min-h-screen bg-background">
@@ -114,20 +118,20 @@ export const Layout = ({ children }: LayoutProps) => {
           </nav>
 
           {/* User Info */}
-          {currentUser && (
+          {profile && (
             <div className="p-4 border-t border-sidebar-border">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-full bg-sidebar-accent flex items-center justify-center">
                   <span className="text-sm font-semibold text-sidebar-foreground">
-                    {currentUser.name.charAt(0)}
+                    {profile.full_name.charAt(0)}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-primary-foreground truncate">
-                    {currentUser.name}
+                    {profile.full_name}
                   </p>
                   <p className="text-xs text-sidebar-foreground/70">
-                    {currentUser.role === 'admin' ? 'Yönetici' : 'Gişe Personeli'}
+                    {isAdmin ? 'Yönetici' : 'Gişe Personeli'}
                   </p>
                 </div>
               </div>
