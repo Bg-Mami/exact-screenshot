@@ -198,7 +198,7 @@ const SellTicket = () => {
           const { data, error } = await supabase.from('tickets').insert({
             ticket_type_id: item.ticketTypeId,
             museum_id: selectedMuseum,
-            session_id: selectedSession || null,
+            session_id: selectedSession && selectedSession !== 'none' ? selectedSession : null,
             qr_code: qrCode,
             price: ticketType.price,
             sold_by: user!.id,
@@ -369,7 +369,7 @@ const SellTicket = () => {
                     <SelectValue placeholder={sessions.length === 0 ? 'Seans yok' : 'Seans seçin'} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Seanssız</SelectItem>
+                    <SelectItem value="none">Seanssız</SelectItem>
                     {sessions.map(s => {
                       const remaining = s.capacity - s.sold_count;
                       const isFull = remaining <= 0;
