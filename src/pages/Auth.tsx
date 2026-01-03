@@ -63,24 +63,18 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // Kullanıcı adından e-posta bul
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', loginUsername)
-        .maybeSingle();
+      // Kullanıcı adından e-posta bul (edge function ile)
+      const { data: emailData, error: emailError } = await supabase.functions.invoke('get-user-email', {
+        body: { username: loginUsername }
+      });
 
-      if (profileError || !profileData) {
-        toast.error('Kullanıcı bulunamadı');
+      if (emailError || emailData?.error) {
+        toast.error(emailData?.error || 'Kullanıcı bulunamadı');
         setIsLoading(false);
         return;
       }
 
-      // auth.users tablosundan e-posta alınamadığından, kullanıcı adını e-posta olarak kullanacağız
-      // Admin oluştururken e-posta = username@local formatında kaydedilecek
-      const userEmail = `${loginUsername}@local`;
-      
-      const { error } = await signIn(userEmail, password);
+      const { error } = await signIn(emailData.email, password);
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
