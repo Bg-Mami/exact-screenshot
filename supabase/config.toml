@@ -2,3 +2,6 @@ project_id = "eftkbldhggrknfmmcimc"
 
 [functions.create-first-admin]
 verify_jwt = false
+
+[functions.get-user-email]
+verify_jwt = false
