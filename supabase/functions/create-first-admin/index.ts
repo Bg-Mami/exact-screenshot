@@ -47,11 +47,11 @@ serve(async (req) => {
     }
 
     // Get request body
-    const { email, password, fullName, username } = await req.json();
+    const { password, fullName, username } = await req.json();
 
-    if (!email || !password || !fullName || !username) {
+    if (!password || !fullName || !username) {
       return new Response(
-        JSON.stringify({ error: 'Email, şifre, tam ad ve kullanıcı adı gereklidir' }),
+        JSON.stringify({ error: 'Şifre, tam ad ve kullanıcı adı gereklidir' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -70,7 +70,10 @@ serve(async (req) => {
       );
     }
 
-    console.log('Creating first admin user:', email);
+    // Create email from username
+    const email = `${username}@local`;
+
+    console.log('Creating first admin user:', username);
 
     // Create user with Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({

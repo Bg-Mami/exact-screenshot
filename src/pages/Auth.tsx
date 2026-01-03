@@ -10,7 +10,7 @@ import { Ticket, Loader2, UserPlus, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const Auth = () => {
-  const [email, setEmail] = useState('');
+  const [loginUsername, setLoginUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -55,31 +55,54 @@ const Auth = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password) {
-      toast.error('Lütfen e-posta ve şifre girin');
+    if (!loginUsername || !password) {
+      toast.error('Lütfen kullanıcı adı ve şifre girin');
       return;
     }
 
     setIsLoading(true);
-    const { error } = await signIn(email, password);
-    setIsLoading(false);
 
-    if (error) {
-      if (error.message.includes('Invalid login credentials')) {
-        toast.error('Geçersiz e-posta veya şifre');
-      } else {
-        toast.error('Giriş yapılamadı: ' + error.message);
+    try {
+      // Kullanıcı adından e-posta bul
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', loginUsername)
+        .maybeSingle();
+
+      if (profileError || !profileData) {
+        toast.error('Kullanıcı bulunamadı');
+        setIsLoading(false);
+        return;
       }
-    } else {
-      toast.success('Giriş başarılı!');
-      navigate('/');
+
+      // auth.users tablosundan e-posta alınamadığından, kullanıcı adını e-posta olarak kullanacağız
+      // Admin oluştururken e-posta = username@local formatında kaydedilecek
+      const userEmail = `${loginUsername}@local`;
+      
+      const { error } = await signIn(userEmail, password);
+
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          toast.error('Geçersiz kullanıcı adı veya şifre');
+        } else {
+          toast.error('Giriş yapılamadı: ' + error.message);
+        }
+      } else {
+        toast.success('Giriş başarılı!');
+        navigate('/');
+      }
+    } catch (err) {
+      toast.error('Beklenmeyen bir hata oluştu');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password || !fullName || !username) {
+    if (!password || !fullName || !username) {
       toast.error('Lütfen tüm alanları doldurun');
       return;
     }
@@ -93,7 +116,7 @@ const Auth = () => {
     
     try {
       const { data, error } = await supabase.functions.invoke('create-first-admin', {
-        body: { email, password, fullName, username }
+        body: { password, fullName, username }
       });
 
       if (error) {
@@ -151,19 +174,19 @@ const Auth = () => {
                 Giriş Yap
               </CardTitle>
               <CardDescription>
-                Personel girişi için e-posta ve şifrenizi girin
+                Personel girişi için kullanıcı adı ve şifrenizi girin
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">E-posta</Label>
+                  <Label htmlFor="loginUsername">Kullanıcı Adı</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder="ornek@muze.gov.tr"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="loginUsername"
+                    type="text"
+                    placeholder="kullaniciadi"
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
                     disabled={isLoading}
                   />
                 </div>
@@ -231,17 +254,6 @@ const Auth = () => {
                     placeholder="admin"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    disabled={isLoading}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">E-posta</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="admin@muze.gov.tr"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
                   />
                 </div>
