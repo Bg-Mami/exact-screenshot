@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, Trash2, Shield, Key } from 'lucide-react';
+import { Loader2, Plus, Users, Trash2, Shield, Key, Building2 } from 'lucide-react';
 
 type AppRole = 'admin' | 'cashier';
 type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings';
@@ -56,6 +56,8 @@ export const UserSettings = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [permDialogUser, setPermDialogUser] = useState<UserProfile | null>(null);
+  const [museumDialogUser, setMuseumDialogUser] = useState<UserProfile | null>(null);
+  const [selectedMuseumForUser, setSelectedMuseumForUser] = useState<string>('');
   const [newUser, setNewUser] = useState({
     email: '',
     password: '',
@@ -65,6 +67,7 @@ export const UserSettings = () => {
     museum_id: '',
   });
   const [creating, setCreating] = useState(false);
+  const [updatingMuseum, setUpdatingMuseum] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -246,6 +249,36 @@ export const UserSettings = () => {
     toast.success('Yetki güncellendi');
   };
 
+  const handleUpdateMuseum = async () => {
+    if (!museumDialogUser) return;
+    
+    setUpdatingMuseum(true);
+    
+    const { error } = await supabase
+      .from('profiles')
+      .update({ assigned_museum_id: selectedMuseumForUser || null })
+      .eq('id', museumDialogUser.id);
+
+    if (error) {
+      toast.error('Müze atanamadı');
+    } else {
+      setUsers(prev => prev.map(u => 
+        u.id === museumDialogUser.id 
+          ? { ...u, assigned_museum_id: selectedMuseumForUser || null }
+          : u
+      ));
+      toast.success('Müze atandı');
+      setMuseumDialogUser(null);
+    }
+    
+    setUpdatingMuseum(false);
+  };
+
+  const openMuseumDialog = (user: UserProfile) => {
+    setMuseumDialogUser(user);
+    setSelectedMuseumForUser(user.assigned_museum_id || '');
+  };
+
   const getMuseumName = (museumId: string | null) => {
     if (!museumId) return 'Atanmamış';
     return museums.find(m => m.id === museumId)?.name || 'Bilinmeyen';
@@ -405,15 +438,26 @@ export const UserSettings = () => {
                       </div>
 
                       {!isAdmin && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setPermDialogUser(user)}
-                          className="gap-2"
-                        >
-                          <Key className="w-4 h-4" />
-                          Yetkiler
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openMuseumDialog(user)}
+                            className="gap-2"
+                          >
+                            <Building2 className="w-4 h-4" />
+                            Müze Ata
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPermDialogUser(user)}
+                            className="gap-2"
+                          >
+                            <Key className="w-4 h-4" />
+                            Yetkiler
+                          </Button>
+                        </>
                       )}
 
                       <Button
@@ -466,6 +510,48 @@ export const UserSettings = () => {
                 />
               </div>
             ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Museum Assignment Dialog */}
+      <Dialog open={!!museumDialogUser} onOpenChange={(open) => !open && setMuseumDialogUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5" />
+              {museumDialogUser?.full_name} - Müze Ata
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Atanacak Müze</Label>
+              <Select 
+                value={selectedMuseumForUser} 
+                onValueChange={setSelectedMuseumForUser}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Müze seçin" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Atanmamış</SelectItem>
+                  {museums.map(m => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Kullanıcı sadece atandığı müzede bilet satabilecektir.
+              </p>
+            </div>
+            <Button 
+              onClick={handleUpdateMuseum} 
+              className="w-full gradient-primary border-0"
+              disabled={updatingMuseum}
+            >
+              {updatingMuseum ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Müze Ata
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
