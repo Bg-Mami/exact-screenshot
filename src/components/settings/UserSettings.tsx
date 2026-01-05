@@ -66,6 +66,7 @@ export const UserSettings = () => {
     full_name: '',
     role: 'cashier' as AppRole,
     museum_id: '',
+    permissions: ['sell_tickets', 'view_reports'] as AppPermission[],
   });
   const [creating, setCreating] = useState(false);
   const [updatingMuseum, setUpdatingMuseum] = useState(false);
@@ -178,17 +179,16 @@ export const UserSettings = () => {
       toast.error('Rol atanamadı');
     }
 
-    // If cashier, give default permissions
-    if (newUser.role === 'cashier') {
-      await supabase.from('user_permissions').insert([
-        { user_id: userId, permission: 'sell_tickets' },
-        { user_id: userId, permission: 'view_reports' },
-      ]);
+    // Assign selected permissions (for non-admin users)
+    if (newUser.role !== 'admin' && newUser.permissions.length > 0) {
+      await supabase.from('user_permissions').insert(
+        newUser.permissions.map(permission => ({ user_id: userId, permission }))
+      );
     }
 
     toast.success('Kullanıcı oluşturuldu');
     setDialogOpen(false);
-    setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '' });
+    setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '', permissions: ['sell_tickets', 'view_reports'] });
     setCreating(false);
     fetchData();
   };
@@ -408,6 +408,31 @@ export const UserSettings = () => {
                   </SelectContent>
                 </Select>
               </div>
+              {newUser.role === 'cashier' && (
+                <div className="space-y-2">
+                  <Label>Yetkiler</Label>
+                  <div className="grid grid-cols-2 gap-2 p-3 border rounded-md bg-muted/30">
+                    {ALL_PERMISSIONS.filter(p => !['manage_staff', 'manage_museums', 'manage_sessions', 'manage_ticket_types', 'manage_settings'].includes(p)).map(permission => (
+                      <div key={permission} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`new-${permission}`}
+                          checked={newUser.permissions.includes(permission)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setNewUser({ ...newUser, permissions: [...newUser.permissions, permission] });
+                            } else {
+                              setNewUser({ ...newUser, permissions: newUser.permissions.filter(p => p !== permission) });
+                            }
+                          }}
+                        />
+                        <label htmlFor={`new-${permission}`} className="text-sm cursor-pointer">
+                          {PERMISSION_LABELS[permission]}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Atanacak Müze</Label>
                 <Select 
