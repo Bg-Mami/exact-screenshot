@@ -156,70 +156,42 @@ export const UserSettings = () => {
     };
     const internalEmail = `${sanitizeForEmail(newUser.username)}@local`;
 
-    // Create auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: internalEmail,
-      password: newUser.password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: {
+    try {
+      // Use edge function to create user (doesn't switch session)
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: internalEmail,
+          password: newUser.password,
           username: newUser.username,
           full_name: newUser.full_name,
-        }
+          role: newUser.role,
+          permissions: newUser.permissions,
+          museum_groups: newUser.museum_groups,
+          museum_id: newUser.museum_id,
+        },
+      });
+
+      if (error) {
+        toast.error('Kullanıcı oluşturulamadı: ' + error.message);
+        setCreating(false);
+        return;
       }
-    });
 
-    if (authError || !authData.user) {
-      toast.error('Kullanıcı oluşturulamadı: ' + (authError?.message || 'Bilinmeyen hata'));
+      if (data?.error) {
+        toast.error('Kullanıcı oluşturulamadı: ' + data.error);
+        setCreating(false);
+        return;
+      }
+
+      toast.success('Kullanıcı oluşturuldu');
+      setDialogOpen(false);
+      setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '', permissions: ['sell_tickets', 'view_reports'], museum_groups: [] });
+      fetchData();
+    } catch (err) {
+      toast.error('Kullanıcı oluşturma başarısız');
+    } finally {
       setCreating(false);
-      return;
     }
-
-    const userId = authData.user.id;
-
-    // Create profile
-    const { error: profileError } = await supabase.from('profiles').insert({
-      id: userId,
-      username: newUser.username,
-      full_name: newUser.full_name,
-      assigned_museum_id: newUser.museum_id || null,
-    });
-
-    if (profileError) {
-      toast.error('Profil oluşturulamadı');
-      setCreating(false);
-      return;
-    }
-
-    // Assign role
-    const { error: roleError } = await supabase.from('user_roles').insert({
-      user_id: userId,
-      role: newUser.role,
-    });
-
-    if (roleError) {
-      toast.error('Rol atanamadı');
-    }
-
-    // Assign selected permissions (for non-admin users)
-    if (newUser.role !== 'admin' && newUser.permissions.length > 0) {
-      await supabase.from('user_permissions').insert(
-        newUser.permissions.map(permission => ({ user_id: userId, permission }))
-      );
-    }
-
-    // Assign museum groups
-    if (newUser.museum_groups.length > 0) {
-      await supabase.from('user_museum_groups').insert(
-        newUser.museum_groups.map(group_id => ({ user_id: userId, group_id }))
-      );
-    }
-
-    toast.success('Kullanıcı oluşturuldu');
-    setDialogOpen(false);
-    setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '', permissions: ['sell_tickets', 'view_reports'], museum_groups: [] });
-    setCreating(false);
-    fetchData();
   };
 
   const handleToggleActive = async (userId: string, isActive: boolean) => {
