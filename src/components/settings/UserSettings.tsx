@@ -336,7 +336,18 @@ export const UserSettings = () => {
     setUpdatingMuseum(false);
   };
 
-  const openMuseumDialog = (user: UserProfile) => {
+  const openMuseumDialog = async (user: UserProfile) => {
+    // Fetch latest museums before opening dialog
+    const { data: latestMuseums } = await supabase
+      .from('museums')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+    
+    if (latestMuseums) {
+      setMuseums(latestMuseums);
+    }
+    
     setMuseumDialogUser(user);
     setSelectedMuseumForUser(user.assigned_museum_id || '');
   };
@@ -377,7 +388,18 @@ export const UserSettings = () => {
     setUpdatingRole(false);
   };
 
-  const openGroupDialog = (user: UserProfile) => {
+  const openGroupDialog = async (user: UserProfile) => {
+    // Fetch latest museum groups before opening dialog
+    const { data: latestGroups } = await supabase
+      .from('museum_groups')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+    
+    if (latestGroups) {
+      setMuseumGroups(latestGroups);
+    }
+    
     setGroupDialogUser(user);
     setSelectedGroupsForUser(user.museum_groups || []);
   };
