@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen, Search, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen, Search, RefreshCw, Pencil, Lock } from 'lucide-react';
 
 type AppRole = 'admin' | 'cashier';
 type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings' | 'delete_tickets';
@@ -68,9 +68,13 @@ export const UserSettings = () => {
   const [museumDialogUser, setMuseumDialogUser] = useState<UserProfile | null>(null);
   const [roleDialogUser, setRoleDialogUser] = useState<UserProfile | null>(null);
   const [groupDialogUser, setGroupDialogUser] = useState<UserProfile | null>(null);
+  const [editDialogUser, setEditDialogUser] = useState<UserProfile | null>(null);
+  const [passwordDialogUser, setPasswordDialogUser] = useState<UserProfile | null>(null);
   const [selectedRoleForUser, setSelectedRoleForUser] = useState<AppRole>('cashier');
   const [selectedMuseumForUser, setSelectedMuseumForUser] = useState<string>('');
   const [selectedGroupsForUser, setSelectedGroupsForUser] = useState<string[]>([]);
+  const [editFormData, setEditFormData] = useState({ username: '', full_name: '' });
+  const [newPassword, setNewPassword] = useState('');
   const [newUser, setNewUser] = useState({
     password: '',
     username: '',
@@ -84,6 +88,8 @@ export const UserSettings = () => {
   const [updatingMuseum, setUpdatingMuseum] = useState(false);
   const [updatingRole, setUpdatingRole] = useState(false);
   const [updatingGroups, setUpdatingGroups] = useState(false);
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'cashier'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -431,6 +437,95 @@ export const UserSettings = () => {
     return groupIds.map(id => museumGroups.find(g => g.id === id)?.name).filter(Boolean) as string[];
   };
 
+  const openEditDialog = (user: UserProfile) => {
+    setEditDialogUser(user);
+    setEditFormData({ username: user.username, full_name: user.full_name });
+  };
+
+  const openPasswordDialog = (user: UserProfile) => {
+    setPasswordDialogUser(user);
+    setNewPassword('');
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!editDialogUser) return;
+    if (!editFormData.username || !editFormData.full_name) {
+      toast.error('Tüm alanları doldurun');
+      return;
+    }
+
+    setUpdatingProfile(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('update-user-profile', {
+        body: {
+          userId: editDialogUser.id,
+          username: editFormData.username,
+          full_name: editFormData.full_name,
+        },
+      });
+
+      if (error) {
+        toast.error('Profil güncellenemedi: ' + error.message);
+        return;
+      }
+
+      if (data?.error) {
+        toast.error('Profil güncellenemedi: ' + data.error);
+        return;
+      }
+
+      setUsers(prev => prev.map(u =>
+        u.id === editDialogUser.id
+          ? { ...u, username: editFormData.username, full_name: editFormData.full_name }
+          : u
+      ));
+      toast.success('Profil güncellendi');
+      setEditDialogUser(null);
+    } catch (err) {
+      toast.error('Güncelleme başarısız');
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!passwordDialogUser) return;
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('Şifre en az 6 karakter olmalı');
+      return;
+    }
+
+    setResettingPassword(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('reset-user-password', {
+        body: {
+          userId: passwordDialogUser.id,
+          newPassword,
+        },
+      });
+
+      if (error) {
+        toast.error('Şifre sıfırlanamadı: ' + error.message);
+        return;
+      }
+
+      if (data?.error) {
+        toast.error('Şifre sıfırlanamadı: ' + data.error);
+        return;
+      }
+
+      toast.success('Şifre başarıyla sıfırlandı');
+      setPasswordDialogUser(null);
+      setNewPassword('');
+    } catch (err) {
+      toast.error('Şifre sıfırlama başarısız');
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -710,6 +805,26 @@ export const UserSettings = () => {
 
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => openEditDialog(user)}
+                        className="gap-2"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Düzenle
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openPasswordDialog(user)}
+                        className="gap-2"
+                      >
+                        <Lock className="w-4 h-4" />
+                        Şifre
+                      </Button>
+
+                      <Button
+                        size="sm"
                         variant="destructive"
                         onClick={() => handleDeleteUser(user.id)}
                       >
@@ -901,6 +1016,78 @@ export const UserSettings = () => {
             >
               {updatingGroups ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Grupları Kaydet
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={!!editDialogUser} onOpenChange={(open) => !open && setEditDialogUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5" />
+              {editDialogUser?.full_name} - Düzenle
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Kullanıcı Adı</Label>
+              <Input
+                value={editFormData.username}
+                onChange={(e) => setEditFormData({ ...editFormData, username: e.target.value })}
+                placeholder="ornek.kullanici"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Ad Soyad</Label>
+              <Input
+                value={editFormData.full_name}
+                onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
+                placeholder="Örnek Kullanıcı"
+              />
+            </div>
+            <Button 
+              onClick={handleUpdateProfile} 
+              className="w-full gradient-primary border-0"
+              disabled={updatingProfile}
+            >
+              {updatingProfile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Kaydet
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!passwordDialogUser} onOpenChange={(open) => !open && setPasswordDialogUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="w-5 h-5" />
+              {passwordDialogUser?.full_name} - Şifre Sıfırla
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Yeni Şifre (min 6 karakter)</Label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Yeni şifre kullanıcıya iletilmelidir.
+            </p>
+            <Button 
+              onClick={handleResetPassword} 
+              className="w-full gradient-primary border-0"
+              disabled={resettingPassword}
+            >
+              {resettingPassword ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Şifreyi Sıfırla
             </Button>
           </div>
         </DialogContent>
