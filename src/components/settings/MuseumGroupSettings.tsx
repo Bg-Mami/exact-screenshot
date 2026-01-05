@@ -17,8 +17,8 @@ interface MuseumGroup {
   id: string;
   name: string;
   description: string | null;
-  is_active: boolean;
-  created_at: string;
+  is_active: boolean | null;
+  created_at: string | null;
 }
 
 interface Museum {
@@ -335,7 +335,7 @@ export const MuseumGroupSettings = () => {
           {groups.map(group => {
             const groupMuseums = getGroupMuseums(group.id);
             return (
-              <Card key={group.id} className={cn(!group.is_active && 'opacity-60')}>
+              <Card key={group.id} className={cn(group.is_active === false && 'opacity-60')}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -345,7 +345,7 @@ export const MuseumGroupSettings = () => {
                       <div>
                         <CardTitle className="text-base flex items-center gap-2">
                           {group.name}
-                          {!group.is_active && (
+                          {group.is_active === false && (
                             <Badge variant="secondary">Pasif</Badge>
                           )}
                         </CardTitle>
@@ -364,11 +364,11 @@ export const MuseumGroupSettings = () => {
                           id: group.id, 
                           isActive: !group.is_active 
                         })}
-                        title={group.is_active ? 'Pasif Yap' : 'Aktif Yap'}
+                        title={group.is_active !== false ? 'Pasif Yap' : 'Aktif Yap'}
                       >
                         <div className={cn(
                           "w-2 h-2 rounded-full",
-                          group.is_active ? "bg-green-500" : "bg-gray-400"
+                          group.is_active !== false ? "bg-green-500" : "bg-gray-400"
                         )} />
                       </Button>
                       <Button
