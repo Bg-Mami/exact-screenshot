@@ -42,6 +42,7 @@ interface Session {
   end_time: string;
   capacity: number;
   sold_count: number;
+  name?: string;
 }
 
 interface CartItem {
@@ -167,7 +168,23 @@ const SellTicket = () => {
   const fetchSessions = async (museumId: string) => {
     const today = new Date().toISOString().split('T')[0];
     
-    // First, try to get existing sessions for today
+    // Get active templates for this museum first
+    const { data: templates, error: templatesError } = await supabase
+      .from('session_templates')
+      .select('*')
+      .eq('museum_id', museumId)
+      .eq('is_active', true)
+      .order('start_time');
+
+    if (templatesError) {
+      console.error('Templates error:', templatesError);
+    }
+
+    // Create a map of template names
+    const templateNameMap = new Map<string, string>();
+    (templates || []).forEach(t => templateNameMap.set(t.id, t.name));
+
+    // Get existing sessions for today
     const { data: existingSessions, error: sessionsError } = await supabase
       .from('sessions')
       .select('*')
@@ -181,19 +198,11 @@ const SellTicket = () => {
       return;
     }
 
-    // Get active templates for this museum
-    const { data: templates, error: templatesError } = await supabase
-      .from('session_templates')
-      .select('*')
-      .eq('museum_id', museumId)
-      .eq('is_active', true)
-      .order('start_time');
-
-    if (templatesError) {
-      console.error('Templates error:', templatesError);
-      setSessions(existingSessions || []);
-      return;
-    }
+    // Add names to existing sessions
+    const sessionsWithNames = (existingSessions || []).map(s => ({
+      ...s,
+      name: s.template_id ? templateNameMap.get(s.template_id) : undefined
+    }));
 
     // Check which templates don't have sessions for today and create them
     const existingTemplateIds = new Set((existingSessions || []).map(s => s.template_id));
@@ -217,14 +226,18 @@ const SellTicket = () => {
 
       if (createError) {
         console.error('Failed to create sessions:', createError);
-        setSessions(existingSessions || []);
+        setSessions(sessionsWithNames);
       } else {
-        setSessions([...(existingSessions || []), ...(createdSessions || [])].sort((a, b) => 
+        const createdWithNames = (createdSessions || []).map(s => ({
+          ...s,
+          name: s.template_id ? templateNameMap.get(s.template_id) : undefined
+        }));
+        setSessions([...sessionsWithNames, ...createdWithNames].sort((a, b) => 
           a.start_time.localeCompare(b.start_time)
         ));
       }
     } else {
-      setSessions(existingSessions || []);
+      setSessions(sessionsWithNames);
     }
   };
 
@@ -525,7 +538,10 @@ const SellTicket = () => {
                         <SelectItem key={s.id} value={s.id} disabled={isFull}>
                           <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4" />
-                            {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}
+                            <span className="font-medium">{s.name || 'Seans'}</span>
+                            <span className="text-muted-foreground">
+                              {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}
+                            </span>
                             <Badge variant={isFull ? 'destructive' : 'secondary'}>
                               {isFull ? 'DOLU' : `${remaining} kişi`}
                             </Badge>
