@@ -231,54 +231,6 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Ticket Types Breakdown - Only show if there are ticket types */}
-        {ticketTypes.length > 0 && (
-          <div className="bg-card rounded-2xl border border-border p-6 animate-slide-up">
-            <h2 className="text-xl font-semibold text-foreground mb-6">
-              Bilet Türlerine Göre Satış
-            </h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              {ticketTypes.map((type, index) => {
-                const count = todayStats?.byType[type.id] || 0;
-                const revenue = count * Number(type.price);
-                
-                return (
-                  <div 
-                    key={type.id}
-                    className="p-4 rounded-xl bg-secondary/50 border border-border animate-fade-in"
-                    style={{ animationDelay: `${index * 100}ms` }}
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div 
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
-                        style={{ backgroundColor: type.color }}
-                      >
-                        {getIconComponent(type.icon)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{type.name}</p>
-                        <p className="text-xs text-muted-foreground">₺{type.price}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">{count}</p>
-                        <p className="text-xs text-muted-foreground">adet</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-primary">
-                          ₺{revenue.toLocaleString('tr-TR')}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Recent Sales */}
         <div className="bg-card rounded-2xl border border-border p-6 animate-slide-up">

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen, Search, RefreshCw, Pencil, Lock } from 'lucide-react';
 
@@ -799,13 +800,26 @@ export const UserSettings = () => {
                         </div>
                         <p className="text-sm text-muted-foreground">@{user.username}</p>
                         {user.assigned_museums && user.assigned_museums.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {getAssignedMuseumNames(user.assigned_museums).map((name, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {name}
-                              </Badge>
-                            ))}
-                          </div>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1 mt-1 cursor-help">
+                                  <Building2 className="w-3 h-3 text-muted-foreground" />
+                                  <span className="text-xs text-primary font-medium">
+                                    {user.assigned_museums.length} müze atanmış
+                                  </span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs">
+                                <div className="space-y-1">
+                                  <p className="font-medium text-xs">Atanan Müzeler:</p>
+                                  {getAssignedMuseumNames(user.assigned_museums).map((name, i) => (
+                                    <p key={i} className="text-xs">• {name}</p>
+                                  ))}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         ) : (
                           <p className="text-xs text-muted-foreground mt-1">Müze atanmamış</p>
                         )}
