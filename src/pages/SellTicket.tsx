@@ -466,6 +466,12 @@ const SellTicket = () => {
               <div className="p-4 text-center" style={{ backgroundColor: generatedTickets[currentTicketIndex].ticket_type.color }}>
                 <h3 className="text-lg font-bold text-white">{generatedTickets[currentTicketIndex].museum.name}</h3>
                 <p className="text-white/80 text-sm">{generatedTickets[currentTicketIndex].ticket_type.name}</p>
+                {generatedTickets[currentTicketIndex].session && (
+                  <p className="text-white/70 text-xs mt-1">
+                    {generatedTickets[currentTicketIndex].session.name && `${generatedTickets[currentTicketIndex].session.name} • `}
+                    {generatedTickets[currentTicketIndex].session.start_time.slice(0, 5)} - {generatedTickets[currentTicketIndex].session.end_time.slice(0, 5)}
+                  </p>
+                )}
               </div>
               <CardContent className="p-6 flex flex-col items-center bg-white">
                 <QRCodeSVG value={generatedTickets[currentTicketIndex].qr_code} size={180} level="H" />
@@ -554,31 +560,33 @@ const SellTicket = () => {
               </div>
             </div>
 
-            {/* Session Capacity Warning */}
+            {/* Session Capacity Info */}
             {selectedSession && selectedSession !== 'none' && (() => {
               const session = sessions.find(s => s.id === selectedSession);
               if (session) {
                 const remaining = session.capacity - session.sold_count;
                 const percent = (session.sold_count / session.capacity) * 100;
-                // Show warning when 3 or fewer spots remain or capacity is 80%+ filled
-                if (remaining <= 3 || percent >= 80) {
-                  const isAlmostFull = remaining <= 3;
-                  return (
-                    <div className={`${isAlmostFull ? 'bg-destructive/10 border-destructive' : 'bg-warning/10 border-warning'} border rounded-xl p-4 flex items-center gap-3 animate-fade-in`}>
-                      <AlertTriangle className={`w-5 h-5 ${isAlmostFull ? 'text-destructive' : 'text-warning'} shrink-0`} />
-                      <div className="flex-1">
-                        <p className={`font-medium ${isAlmostFull ? 'text-destructive' : 'text-warning'}`}>
-                          {remaining === 0 
-                            ? 'Bu seans tamamen doldu!' 
-                            : remaining === 1 
-                              ? '⚠️ Son 1 kişilik yer kaldı!'
-                              : `⚠️ Sadece ${remaining} kişilik yer kaldı!`}
-                        </p>
-                        <Progress value={percent} className="h-2 mt-2" />
-                      </div>
+                const isAlmostFull = remaining <= 3;
+                const isCritical = remaining <= 3 || percent >= 80;
+                
+                return (
+                  <div className={`${isCritical ? (isAlmostFull ? 'bg-destructive/10 border-destructive' : 'bg-warning/10 border-warning') : 'bg-muted/50 border-border'} border rounded-xl p-4 flex items-center gap-3 animate-fade-in`}>
+                    {isCritical && <AlertTriangle className={`w-5 h-5 ${isAlmostFull ? 'text-destructive' : 'text-warning'} shrink-0`} />}
+                    {!isCritical && <Clock className="w-5 h-5 text-muted-foreground shrink-0" />}
+                    <div className="flex-1">
+                      <p className={`font-medium ${isCritical ? (isAlmostFull ? 'text-destructive' : 'text-warning') : 'text-foreground'}`}>
+                        {remaining === 0 
+                          ? 'Bu seans tamamen doldu!' 
+                          : remaining === 1 
+                            ? '⚠️ Son 1 kişilik yer kaldı!'
+                            : remaining <= 3
+                              ? `⚠️ Sadece ${remaining} kişilik yer kaldı!`
+                              : `${session.name ? session.name + ' • ' : ''}${remaining} / ${session.capacity} kişilik yer mevcut`}
+                      </p>
+                      <Progress value={percent} className="h-2 mt-2" />
                     </div>
-                  );
-                }
+                  </div>
+                );
               }
               return null;
             })()}
