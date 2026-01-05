@@ -124,6 +124,50 @@ export type Database = {
           },
         ]
       }
+      session_templates: {
+        Row: {
+          capacity: number
+          created_at: string | null
+          end_time: string
+          id: string
+          is_active: boolean | null
+          museum_id: string
+          name: string
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          capacity?: number
+          created_at?: string | null
+          end_time: string
+          id?: string
+          is_active?: boolean | null
+          museum_id: string
+          name: string
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          capacity?: number
+          created_at?: string | null
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          museum_id?: string
+          name?: string
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_templates_museum_id_fkey"
+            columns: ["museum_id"]
+            isOneToOne: false
+            referencedRelation: "museums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sessions: {
         Row: {
           capacity: number
@@ -135,6 +179,7 @@ export type Database = {
           session_date: string
           sold_count: number
           start_time: string
+          template_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -147,6 +192,7 @@ export type Database = {
           session_date: string
           sold_count?: number
           start_time: string
+          template_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -159,6 +205,7 @@ export type Database = {
           session_date?: string
           sold_count?: number
           start_time?: string
+          template_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -167,6 +214,13 @@ export type Database = {
             columns: ["museum_id"]
             isOneToOne: false
             referencedRelation: "museums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "session_templates"
             referencedColumns: ["id"]
           },
         ]
