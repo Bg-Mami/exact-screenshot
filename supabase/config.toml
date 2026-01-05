@@ -1,13 +1,11 @@
 project_id = "eftkbldhggrknfmmcimc"
 
-[functions.create-first-admin]
-verify_jwt = false
+[api]
+enabled = true
+port = 54321
 
-[functions.get-user-email]
-verify_jwt = false
-
-[functions.check-admin-exists]
-verify_jwt = false
+[db]
+port = 54322
 
 [functions.validate-ticket-api]
 verify_jwt = false
@@ -19,4 +17,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.cleanup-orphan-users]
+verify_jwt = false
+
+[functions.reset-user-password]
+verify_jwt = false
+
+[functions.update-user-profile]
 verify_jwt = false
