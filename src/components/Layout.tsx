@@ -55,7 +55,14 @@ export const Layout = ({ children }: LayoutProps) => {
           </div>
           <span className="font-semibold text-primary-foreground">E-Bilet</span>
         </div>
-        <div className="w-10" />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleLogout}
+          className="text-primary-foreground hover:bg-sidebar-accent"
+        >
+          <LogOut className="w-5 h-5" />
+        </Button>
       </header>
 
       {/* Mobile Overlay */}
@@ -154,6 +161,25 @@ export const Layout = ({ children }: LayoutProps) => {
         "lg:ml-64 min-h-screen pt-16 lg:pt-0",
         "transition-all duration-300"
       )}>
+        {/* Desktop Top Bar */}
+        <div className="hidden lg:flex items-center justify-end h-16 px-8 border-b border-border">
+          {profile && (
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground">
+                {profile.full_name}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                className="gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Çıkış Yap
+              </Button>
+            </div>
+          )}
+        </div>
         <div className="p-4 lg:p-8">
           {children}
         </div>
