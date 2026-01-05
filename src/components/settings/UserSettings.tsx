@@ -240,21 +240,17 @@ export const UserSettings = () => {
     if (!confirm('Bu kullanıcıyı kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({ userId }),
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId },
       });
 
-      const result = await response.json();
+      if (error) {
+        toast.error(error.message || 'Silme başarısız');
+        return;
+      }
 
-      if (!response.ok) {
-        toast.error(result.error || 'Silme başarısız');
+      if (data?.error) {
+        toast.error(data.error);
         return;
       }
 
@@ -270,24 +266,19 @@ export const UserSettings = () => {
 
     setCleaningUp(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cleanup-orphan-users`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-      });
+      const { data, error } = await supabase.functions.invoke('cleanup-orphan-users');
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        toast.error(result.error || 'Temizleme başarısız');
+      if (error) {
+        toast.error(error.message || 'Temizleme başarısız');
         return;
       }
 
-      toast.success(result.message || 'Temizleme tamamlandı');
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      toast.success(data?.message || 'Temizleme tamamlandı');
       fetchData();
     } catch (error) {
       toast.error('Temizleme işlemi başarısız');
