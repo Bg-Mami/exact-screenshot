@@ -902,14 +902,14 @@ export const UserSettings = () => {
             <div className="space-y-2">
               <Label>Atanacak Müze</Label>
               <Select 
-                value={selectedMuseumForUser} 
-                onValueChange={setSelectedMuseumForUser}
+                value={selectedMuseumForUser || 'none'} 
+                onValueChange={(v) => setSelectedMuseumForUser(v === 'none' ? '' : v)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Müze seçin" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Atanmamış</SelectItem>
+                  <SelectItem value="none">Atanmamış</SelectItem>
                   {museums.map(m => (
                     <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                   ))}
