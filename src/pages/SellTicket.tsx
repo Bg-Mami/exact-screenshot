@@ -20,6 +20,8 @@ interface TicketType {
   color: string;
   icon: string;
   is_active: boolean;
+  credits: number;
+  is_combo: boolean;
 }
 
 interface MuseumTicketPrice {
@@ -55,6 +57,7 @@ interface GeneratedTicket {
   museum: Museum;
   session?: Session;
   created_at: string;
+  remaining_credits: number;
 }
 
 const SellTicket = () => {
@@ -292,6 +295,7 @@ const SellTicket = () => {
     try {
       for (const item of cart) {
         const ticketType = displayTicketTypes.find(t => t.id === item.ticketTypeId)!;
+        const credits = ticketType.credits || 1;
         
         for (let i = 0; i < item.quantity; i++) {
           const qrCode = generateQRCode();
@@ -303,6 +307,7 @@ const SellTicket = () => {
             qr_code: qrCode,
             price: ticketType.price,
             sold_by: user!.id,
+            remaining_credits: credits,
           }).select().single();
 
           if (error) throw error;
@@ -315,6 +320,7 @@ const SellTicket = () => {
             museum,
             session,
             created_at: data.created_at,
+            remaining_credits: data.remaining_credits,
           });
         }
       }
@@ -416,6 +422,11 @@ const SellTicket = () => {
                 <QRCodeSVG value={generatedTickets[currentTicketIndex].qr_code} size={180} level="H" />
                 <p className="mt-3 text-lg font-mono font-bold tracking-wider">{generatedTickets[currentTicketIndex].qr_code}</p>
                 <p className="mt-2 text-2xl font-bold text-primary">₺{generatedTickets[currentTicketIndex].price}</p>
+                {generatedTickets[currentTicketIndex].remaining_credits > 1 && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {generatedTickets[currentTicketIndex].remaining_credits} Kontör
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -541,7 +552,15 @@ const SellTicket = () => {
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ backgroundColor: type.color }}>🎫</div>
                           <div className="flex-1">
-                            <p className="font-medium">{type.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{type.name}</p>
+                              {type.credits > 1 && (
+                                <Badge variant="secondary" className="text-xs">{type.credits} Kontör</Badge>
+                              )}
+                              {type.is_combo && (
+                                <Badge variant="outline" className="text-xs">Kombine</Badge>
+                              )}
+                            </div>
                             <p className="text-lg font-bold text-primary">₺{type.price}</p>
                           </div>
                         </div>

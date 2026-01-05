@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog } from 'lucide-react';
 
 type AppRole = 'admin' | 'cashier';
-type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings';
+type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings' | 'delete_tickets';
 
 interface UserProfile {
   id: string;
@@ -38,6 +38,7 @@ const PERMISSION_LABELS: Record<AppPermission, string> = {
   manage_sessions: 'Seans Yönetimi',
   manage_ticket_types: 'Bilet Türü Yönetimi',
   manage_settings: 'Ayarlar',
+  delete_tickets: 'Bilet Silme',
 };
 
 const ALL_PERMISSIONS: AppPermission[] = [
@@ -48,6 +49,7 @@ const ALL_PERMISSIONS: AppPermission[] = [
   'manage_sessions',
   'manage_ticket_types',
   'manage_settings',
+  'delete_tickets',
 ];
 
 export const UserSettings = () => {

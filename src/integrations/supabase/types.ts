@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      combo_ticket_museums: {
+        Row: {
+          created_at: string | null
+          credits: number
+          id: string
+          museum_id: string
+          ticket_type_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          credits?: number
+          id?: string
+          museum_id: string
+          ticket_type_id: string
+        }
+        Update: {
+          created_at?: string | null
+          credits?: number
+          id?: string
+          museum_id?: string
+          ticket_type_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "combo_ticket_museums_museum_id_fkey"
+            columns: ["museum_id"]
+            isOneToOne: false
+            referencedRelation: "museums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "combo_ticket_museums_ticket_type_id_fkey"
+            columns: ["ticket_type_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       museum_ticket_prices: {
         Row: {
           created_at: string | null
@@ -277,9 +316,11 @@ export type Database = {
         Row: {
           color: string
           created_at: string | null
+          credits: number
           icon: string
           id: string
           is_active: boolean | null
+          is_combo: boolean
           name: string
           price: number
           type_key: string
@@ -288,9 +329,11 @@ export type Database = {
         Insert: {
           color?: string
           created_at?: string | null
+          credits?: number
           icon?: string
           id?: string
           is_active?: boolean | null
+          is_combo?: boolean
           name: string
           price?: number
           type_key: string
@@ -299,15 +342,59 @@ export type Database = {
         Update: {
           color?: string
           created_at?: string | null
+          credits?: number
           icon?: string
           id?: string
           is_active?: boolean | null
+          is_combo?: boolean
           name?: string
           price?: number
           type_key?: string
           updated_at?: string | null
         }
         Relationships: []
+      }
+      ticket_usage: {
+        Row: {
+          id: string
+          museum_id: string
+          ticket_id: string
+          used_at: string
+          used_by: string | null
+          used_credits: number
+        }
+        Insert: {
+          id?: string
+          museum_id: string
+          ticket_id: string
+          used_at?: string
+          used_by?: string | null
+          used_credits?: number
+        }
+        Update: {
+          id?: string
+          museum_id?: string
+          ticket_id?: string
+          used_at?: string
+          used_by?: string | null
+          used_credits?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_usage_museum_id_fkey"
+            columns: ["museum_id"]
+            isOneToOne: false
+            referencedRelation: "museums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_usage_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tickets: {
         Row: {
@@ -317,6 +404,7 @@ export type Database = {
           museum_id: string
           price: number
           qr_code: string
+          remaining_credits: number
           session_id: string | null
           sold_by: string
           ticket_type_id: string
@@ -329,6 +417,7 @@ export type Database = {
           museum_id: string
           price: number
           qr_code: string
+          remaining_credits?: number
           session_id?: string | null
           sold_by: string
           ticket_type_id: string
@@ -341,6 +430,7 @@ export type Database = {
           museum_id?: string
           price?: number
           qr_code?: string
+          remaining_credits?: number
           session_id?: string | null
           sold_by?: string
           ticket_type_id?: string

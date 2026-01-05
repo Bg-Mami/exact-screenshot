@@ -1,41 +1,271 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
-import { useTicketStore } from '@/store/ticketStore';
-import { TICKET_TYPES } from '@/types/ticket';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { QrCode, CheckCircle2, XCircle, Scan } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { QrCode, CheckCircle2, XCircle, Scan, Layers, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+
+interface Museum {
+  id: string;
+  name: string;
+}
+
+interface TicketType {
+  id: string;
+  name: string;
+  color: string;
+  credits: number;
+  is_combo: boolean;
+}
+
+interface ComboMuseum {
+  museum_id: string;
+  credits: number;
+}
+
+interface TicketData {
+  id: string;
+  qr_code: string;
+  is_used: boolean;
+  remaining_credits: number;
+  museum_id: string;
+  ticket_type_id: string;
+  ticket_type: TicketType;
+  museum: Museum;
+}
 
 const ValidateTicket = () => {
   const [inputCode, setInputCode] = useState('');
+  const [museums, setMuseums] = useState<Museum[]>([]);
+  const [selectedMuseum, setSelectedMuseum] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{
     valid: boolean;
     message: string;
     ticketType?: string;
+    remainingCredits?: number;
+    isCombo?: boolean;
   } | null>(null);
-  const { validateTicket } = useTicketStore();
+  const { user, profile } = useAuth();
 
-  const handleValidate = () => {
-    if (!inputCode.trim()) return;
-    
-    const result = validateTicket(inputCode.trim().toUpperCase());
-    
-    if (result.ticket) {
-      const typeInfo = TICKET_TYPES.find(t => t.type === result.ticket!.type);
-      setValidationResult({
-        valid: result.valid,
-        message: result.message,
-        ticketType: typeInfo?.label,
-      });
+  useEffect(() => {
+    fetchMuseums();
+  }, [profile]);
+
+  const fetchMuseums = async () => {
+    const [museumsRes, rolesRes] = await Promise.all([
+      supabase.from('museums').select('id, name').eq('is_active', true),
+      user ? supabase.from('user_roles').select('role').eq('user_id', user.id) : Promise.resolve({ data: [] }),
+    ]);
+
+    const allMuseums = museumsRes.data || [];
+    const userRoles = rolesRes.data || [];
+    const userIsAdmin = userRoles.some(r => r.role === 'admin');
+
+    if (!userIsAdmin && profile?.assigned_museum_id) {
+      const assignedMuseum = allMuseums.filter(m => m.id === profile.assigned_museum_id);
+      setMuseums(assignedMuseum);
+      if (assignedMuseum.length === 1) {
+        setSelectedMuseum(assignedMuseum[0].id);
+      }
     } else {
-      setValidationResult({
-        valid: false,
-        message: result.message,
-      });
+      setMuseums(allMuseums);
+      if (allMuseums.length === 1) {
+        setSelectedMuseum(allMuseums[0].id);
+      }
+    }
+    
+    setLoading(false);
+  };
+
+  const handleValidate = async () => {
+    if (!inputCode.trim()) return;
+    if (!selectedMuseum) {
+      toast.error('Lütfen müze seçin');
+      return;
     }
 
-    // Auto-clear after 5 seconds
+    setValidating(true);
+    const code = inputCode.trim().toUpperCase();
+
+    try {
+      // Find the ticket
+      const { data: ticket, error: ticketError } = await supabase
+        .from('tickets')
+        .select(`
+          id,
+          qr_code,
+          is_used,
+          remaining_credits,
+          museum_id,
+          ticket_type_id,
+          ticket_types (
+            id,
+            name,
+            color,
+            credits,
+            is_combo
+          ),
+          museums (
+            id,
+            name
+          )
+        `)
+        .eq('qr_code', code)
+        .maybeSingle();
+
+      if (ticketError) throw ticketError;
+
+      if (!ticket) {
+        setValidationResult({
+          valid: false,
+          message: 'Bilet bulunamadı',
+        });
+        autoReset();
+        return;
+      }
+
+      const ticketType = ticket.ticket_types as unknown as TicketType;
+      const ticketMuseum = ticket.museums as unknown as Museum;
+
+      // Check if combo ticket
+      if (ticketType.is_combo) {
+        // Get combo museum credits
+        const { data: comboMuseums } = await supabase
+          .from('combo_ticket_museums')
+          .select('museum_id, credits')
+          .eq('ticket_type_id', ticket.ticket_type_id);
+
+        // Check if this museum is in the combo
+        const comboEntry = (comboMuseums || []).find(cm => cm.museum_id === selectedMuseum);
+        
+        if (!comboEntry) {
+          setValidationResult({
+            valid: false,
+            message: 'Bu bilet bu müze için geçerli değil',
+            ticketType: ticketType.name,
+            isCombo: true,
+          });
+          autoReset();
+          return;
+        }
+
+        // Check usage for this specific museum
+        const { data: usageData } = await supabase
+          .from('ticket_usage')
+          .select('used_credits')
+          .eq('ticket_id', ticket.id)
+          .eq('museum_id', selectedMuseum);
+
+        const usedCredits = (usageData || []).reduce((sum, u) => sum + u.used_credits, 0);
+        const remainingForMuseum = comboEntry.credits - usedCredits;
+
+        if (remainingForMuseum <= 0) {
+          setValidationResult({
+            valid: false,
+            message: 'Bu müze için giriş hakkı kalmadı',
+            ticketType: ticketType.name,
+            remainingCredits: 0,
+            isCombo: true,
+          });
+          autoReset();
+          return;
+        }
+
+        // Use one credit
+        const { error: usageError } = await supabase
+          .from('ticket_usage')
+          .insert({
+            ticket_id: ticket.id,
+            museum_id: selectedMuseum,
+            used_credits: 1,
+            used_by: user?.id,
+          });
+
+        if (usageError) throw usageError;
+
+        setValidationResult({
+          valid: true,
+          message: `Giriş onaylandı - ${remainingForMuseum - 1} kontör kaldı`,
+          ticketType: ticketType.name,
+          remainingCredits: remainingForMuseum - 1,
+          isCombo: true,
+        });
+      } else {
+        // Regular ticket - check museum matches
+        if (ticket.museum_id !== selectedMuseum) {
+          setValidationResult({
+            valid: false,
+            message: 'Bu bilet farklı bir müzeye ait',
+            ticketType: ticketType.name,
+          });
+          autoReset();
+          return;
+        }
+
+        // Check remaining credits
+        if (ticket.remaining_credits <= 0) {
+          setValidationResult({
+            valid: false,
+            message: 'Bilet kullanım hakkı dolmuş',
+            ticketType: ticketType.name,
+            remainingCredits: 0,
+          });
+          autoReset();
+          return;
+        }
+
+        // Use one credit
+        const newCredits = ticket.remaining_credits - 1;
+        const { error: updateError } = await supabase
+          .from('tickets')
+          .update({ 
+            remaining_credits: newCredits,
+            is_used: newCredits === 0,
+            used_at: newCredits === 0 ? new Date().toISOString() : null,
+          })
+          .eq('id', ticket.id);
+
+        if (updateError) throw updateError;
+
+        // Record usage
+        await supabase.from('ticket_usage').insert({
+          ticket_id: ticket.id,
+          museum_id: selectedMuseum,
+          used_credits: 1,
+          used_by: user?.id,
+        });
+
+        setValidationResult({
+          valid: true,
+          message: newCredits > 0 
+            ? `Giriş onaylandı - ${newCredits} kontör kaldı`
+            : 'Giriş onaylandı - Son kullanım',
+          ticketType: ticketType.name,
+          remainingCredits: newCredits,
+        });
+      }
+
+      autoReset();
+    } catch (error: any) {
+      toast.error('Doğrulama hatası: ' + error.message);
+      setValidationResult({
+        valid: false,
+        message: 'Sistem hatası',
+      });
+      autoReset();
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const autoReset = () => {
     setTimeout(() => {
       setValidationResult(null);
       setInputCode('');
@@ -48,6 +278,16 @@ const ValidateTicket = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-8 max-w-2xl mx-auto">
@@ -57,6 +297,23 @@ const ValidateTicket = () => {
           <p className="text-muted-foreground mt-1">
             Turnike için QR kod veya bilet kodunu girin
           </p>
+        </div>
+
+        {/* Museum Selection */}
+        <div className="animate-fade-in">
+          <div className="space-y-2 max-w-md mx-auto">
+            <label className="text-sm font-medium text-foreground">Müze Seçin *</label>
+            <Select value={selectedMuseum} onValueChange={setSelectedMuseum}>
+              <SelectTrigger>
+                <SelectValue placeholder="Müze seçin" />
+              </SelectTrigger>
+              <SelectContent>
+                {museums.map(m => (
+                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Validation Result */}
@@ -79,9 +336,21 @@ const ValidateTicket = () => {
             </h2>
             <p className="text-lg opacity-90">{validationResult.message}</p>
             {validationResult.ticketType && (
-              <p className="mt-2 text-sm opacity-80">
-                Bilet Türü: {validationResult.ticketType}
-              </p>
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <p className="text-sm opacity-80">Bilet: {validationResult.ticketType}</p>
+                {validationResult.isCombo && (
+                  <Badge variant="secondary" className="gap-1">
+                    <Building2 className="w-3 h-3" />
+                    Kombine
+                  </Badge>
+                )}
+              </div>
+            )}
+            {validationResult.remainingCredits !== undefined && validationResult.remainingCredits > 0 && (
+              <div className="mt-2 flex items-center justify-center gap-1">
+                <Layers className="w-4 h-4" />
+                <span className="text-sm">{validationResult.remainingCredits} kontör kaldı</span>
+              </div>
             )}
           </div>
         ) : (
@@ -112,15 +381,16 @@ const ValidateTicket = () => {
                     onChange={(e) => setInputCode(e.target.value.toUpperCase())}
                     onKeyPress={handleKeyPress}
                     className="pl-12 h-14 text-lg font-mono uppercase"
+                    disabled={validating}
                   />
                 </div>
                 <Button 
                   size="lg" 
                   onClick={handleValidate}
-                  disabled={!inputCode.trim()}
+                  disabled={!inputCode.trim() || !selectedMuseum || validating}
                   className="px-8 gradient-primary border-0"
                 >
-                  Doğrula
+                  {validating ? 'Kontrol...' : 'Doğrula'}
                 </Button>
               </div>
             </div>
@@ -143,7 +413,11 @@ const ValidateTicket = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary">•</span>
-                  Her bilet sadece bir kez kullanılabilir
+                  Grup biletleri birden fazla kez kullanılabilir (kontör sayısına göre)
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  Kombine biletler birden fazla müzede geçerlidir
                 </li>
               </ul>
             </div>
