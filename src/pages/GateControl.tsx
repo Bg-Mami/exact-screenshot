@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -145,11 +146,14 @@ const GateControl = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4">
+    <Layout>
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Geçiş Kontrol</h1>
+          <div>
+            <h1 className="text-2xl font-bold">Geçiş Kontrol</h1>
+            <p className="text-muted-foreground text-sm">Turnike/kapı geçişlerinde QR kod doğrulama</p>
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -288,7 +292,7 @@ const GateControl = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </Layout>
   );
 };
 
