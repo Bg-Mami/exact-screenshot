@@ -250,7 +250,13 @@ const SellTicket = () => {
 
     if (error) {
       toast.error('Müze fiyatları yüklenemedi');
-      setDisplayTicketTypes(ticketTypes);
+      setDisplayTicketTypes([]);
+      return;
+    }
+
+    // If no prices defined for this museum, show no ticket types
+    if (!data || data.length === 0) {
+      setDisplayTicketTypes([]);
       return;
     }
 
@@ -260,13 +266,15 @@ const SellTicket = () => {
       priceMap.set(item.ticket_type_id, item.price);
     });
 
-    // Update ticket types with museum-specific prices
-    const updatedTypes = ticketTypes.map(type => ({
-      ...type,
-      price: priceMap.has(type.id) ? priceMap.get(type.id)! : type.price
-    }));
+    // Only show ticket types that have prices defined for this museum
+    const filteredTypes = ticketTypes
+      .filter(type => priceMap.has(type.id))
+      .map(type => ({
+        ...type,
+        price: priceMap.get(type.id)!
+      }));
 
-    setDisplayTicketTypes(updatedTypes);
+    setDisplayTicketTypes(filteredTypes);
   };
 
   const addToCart = (ticketTypeId: string) => {
