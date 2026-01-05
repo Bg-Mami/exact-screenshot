@@ -35,6 +35,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard, show: true },
     { path: '/sell', label: 'Bilet Satış', icon: Ticket, show: hasPermission('sell_tickets') },
     { path: '/validate', label: 'Bilet Doğrulama', icon: QrCode, show: hasPermission('sell_tickets') },
+    { path: '/gate', label: 'Geçiş Kontrol', icon: QrCode, show: hasPermission('sell_tickets') },
     { path: '/reports', label: 'Raporlar', icon: BarChart3, show: hasPermission('view_reports') },
     { path: '/settings', label: 'Ayarlar', icon: Settings, show: isAdmin },
   ].filter(item => item.show);
