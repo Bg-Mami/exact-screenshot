@@ -4,10 +4,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TicketTypesSettings } from '@/components/settings/TicketTypesSettings';
 import { MuseumSettings } from '@/components/settings/MuseumSettings';
+import { MuseumGroupSettings } from '@/components/settings/MuseumGroupSettings';
 import { SessionSettings } from '@/components/settings/SessionSettings';
 import { UserSettings } from '@/components/settings/UserSettings';
 import { StaffRotationSettings } from '@/components/settings/StaffRotationSettings';
-import { Ticket, Building2, Clock, Users, CalendarDays } from 'lucide-react';
+import { Ticket, Building2, Clock, Users, CalendarDays, FolderOpen } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 const Settings = () => {
@@ -39,7 +40,7 @@ const Settings = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="animate-slide-up">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 h-auto gap-2 bg-transparent p-0">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 h-auto gap-2 bg-transparent p-0">
             <TabsTrigger 
               value="ticket-types"
               className="data-[state=active]:gradient-primary data-[state=active]:text-primary-foreground gap-2 py-3"
@@ -55,6 +56,14 @@ const Settings = () => {
               <Building2 className="w-4 h-4" />
               <span className="hidden sm:inline">Müzeler</span>
               <span className="sm:hidden">Müze</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="museum-groups"
+              className="data-[state=active]:gradient-primary data-[state=active]:text-primary-foreground gap-2 py-3"
+            >
+              <FolderOpen className="w-4 h-4" />
+              <span className="hidden sm:inline">Müze Grupları</span>
+              <span className="sm:hidden">Gruplar</span>
             </TabsTrigger>
             <TabsTrigger 
               value="sessions"
@@ -88,6 +97,9 @@ const Settings = () => {
             </TabsContent>
             <TabsContent value="museums" className="mt-0">
               <MuseumSettings />
+            </TabsContent>
+            <TabsContent value="museum-groups" className="mt-0">
+              <MuseumGroupSettings />
             </TabsContent>
             <TabsContent value="sessions" className="mt-0">
               <SessionSettings />
