@@ -128,7 +128,8 @@ const SellTicket = () => {
   const fetchSessions = async (museumId: string) => {
     const today = new Date().toISOString().split('T')[0];
     
-    const { data, error } = await supabase
+    // First, try to get existing sessions for today
+    const { data: existingSessions, error: sessionsError } = await supabase
       .from('sessions')
       .select('*')
       .eq('museum_id', museumId)
@@ -136,10 +137,55 @@ const SellTicket = () => {
       .eq('is_active', true)
       .order('start_time');
 
-    if (error) {
+    if (sessionsError) {
       toast.error('Seanslar yüklenemedi');
+      return;
+    }
+
+    // Get active templates for this museum
+    const { data: templates, error: templatesError } = await supabase
+      .from('session_templates')
+      .select('*')
+      .eq('museum_id', museumId)
+      .eq('is_active', true)
+      .order('start_time');
+
+    if (templatesError) {
+      console.error('Templates error:', templatesError);
+      setSessions(existingSessions || []);
+      return;
+    }
+
+    // Check which templates don't have sessions for today and create them
+    const existingTemplateIds = new Set((existingSessions || []).map(s => s.template_id));
+    const templatesToCreate = (templates || []).filter(t => !existingTemplateIds.has(t.id));
+
+    if (templatesToCreate.length > 0) {
+      const newSessions = templatesToCreate.map(t => ({
+        museum_id: museumId,
+        session_date: today,
+        start_time: t.start_time,
+        end_time: t.end_time,
+        capacity: t.capacity,
+        template_id: t.id,
+        is_active: true,
+      }));
+
+      const { data: createdSessions, error: createError } = await supabase
+        .from('sessions')
+        .insert(newSessions)
+        .select();
+
+      if (createError) {
+        console.error('Failed to create sessions:', createError);
+        setSessions(existingSessions || []);
+      } else {
+        setSessions([...(existingSessions || []), ...(createdSessions || [])].sort((a, b) => 
+          a.start_time.localeCompare(b.start_time)
+        ));
+      }
     } else {
-      setSessions(data || []);
+      setSessions(existingSessions || []);
     }
   };
 
