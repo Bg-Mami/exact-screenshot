@@ -21,6 +21,7 @@ interface UserProfile {
   full_name: string;
   is_active: boolean | null;
   assigned_museum_id: string | null;
+  assigned_museums: string[]; // New: multiple museum assignments
   roles: AppRole[];
   permissions: AppPermission[];
   museum_groups: string[];
@@ -71,7 +72,7 @@ export const UserSettings = () => {
   const [editDialogUser, setEditDialogUser] = useState<UserProfile | null>(null);
   const [passwordDialogUser, setPasswordDialogUser] = useState<UserProfile | null>(null);
   const [selectedRoleForUser, setSelectedRoleForUser] = useState<AppRole>('cashier');
-  const [selectedMuseumForUser, setSelectedMuseumForUser] = useState<string>('');
+  const [selectedMuseumsForUser, setSelectedMuseumsForUser] = useState<string[]>([]);
   const [selectedGroupsForUser, setSelectedGroupsForUser] = useState<string[]>([]);
   const [editFormData, setEditFormData] = useState({ username: '', full_name: '' });
   const [newPassword, setNewPassword] = useState('');
@@ -100,13 +101,14 @@ export const UserSettings = () => {
   }, []);
 
   const fetchData = async () => {
-    const [profilesRes, rolesRes, permsRes, museumsRes, groupsRes, userGroupsRes] = await Promise.all([
+    const [profilesRes, rolesRes, permsRes, museumsRes, groupsRes, userGroupsRes, userMuseumsRes] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('user_roles').select('*'),
       supabase.from('user_permissions').select('*'),
-      supabase.from('museums').select('id, name').eq('is_active', true),
+      supabase.from('museums').select('id, name').eq('is_active', true).order('name'),
       supabase.from('museum_groups').select('id, name').eq('is_active', true),
       supabase.from('user_museum_groups').select('*'),
+      supabase.from('user_museums').select('*'),
     ]);
 
     if (profilesRes.error || rolesRes.error || permsRes.error) {
@@ -119,12 +121,14 @@ export const UserSettings = () => {
     const roles = rolesRes.data || [];
     const permissions = permsRes.data || [];
     const userGroups = userGroupsRes.data || [];
+    const userMuseums = userMuseumsRes.data || [];
 
     const usersWithRoles: UserProfile[] = profiles.map(p => ({
       ...p,
       roles: roles.filter(r => r.user_id === p.id).map(r => r.role as AppRole),
       permissions: permissions.filter(pr => pr.user_id === p.id).map(pr => pr.permission as AppPermission),
       museum_groups: userGroups.filter(ug => ug.user_id === p.id).map(ug => ug.group_id),
+      assigned_museums: userMuseums.filter(um => um.user_id === p.id).map(um => um.museum_id),
     }));
 
     setUsers(usersWithRoles);
@@ -316,23 +320,35 @@ export const UserSettings = () => {
     
     setUpdatingMuseum(true);
     
-    const { error } = await supabase
-      .from('profiles')
-      .update({ assigned_museum_id: selectedMuseumForUser || null })
-      .eq('id', museumDialogUser.id);
-
-    if (error) {
-      toast.error('Müze atanamadı');
-    } else {
-      setUsers(prev => prev.map(u => 
-        u.id === museumDialogUser.id 
-          ? { ...u, assigned_museum_id: selectedMuseumForUser || null }
-          : u
-      ));
-      toast.success('Müze atandı');
-      setMuseumDialogUser(null);
-    }
+    // Delete existing museum assignments
+    await supabase
+      .from('user_museums')
+      .delete()
+      .eq('user_id', museumDialogUser.id);
     
+    // Insert new museum assignments
+    if (selectedMuseumsForUser.length > 0) {
+      const { error } = await supabase
+        .from('user_museums')
+        .insert(selectedMuseumsForUser.map(museum_id => ({
+          user_id: museumDialogUser.id,
+          museum_id,
+        })));
+
+      if (error) {
+        toast.error('Müzeler atanamadı');
+        setUpdatingMuseum(false);
+        return;
+      }
+    }
+
+    setUsers(prev => prev.map(u => 
+      u.id === museumDialogUser.id 
+        ? { ...u, assigned_museums: selectedMuseumsForUser }
+        : u
+    ));
+    toast.success('Müzeler atandı');
+    setMuseumDialogUser(null);
     setUpdatingMuseum(false);
   };
 
@@ -349,7 +365,7 @@ export const UserSettings = () => {
     }
     
     setMuseumDialogUser(user);
-    setSelectedMuseumForUser(user.assigned_museum_id || '');
+    setSelectedMuseumsForUser(user.assigned_museums || []);
   };
 
   const openRoleDialog = (user: UserProfile) => {
@@ -452,6 +468,11 @@ export const UserSettings = () => {
   const getMuseumName = (museumId: string | null) => {
     if (!museumId) return 'Atanmamış';
     return museums.find(m => m.id === museumId)?.name || 'Bilinmeyen';
+  };
+
+  const getAssignedMuseumNames = (museumIds: string[]) => {
+    if (!museumIds || museumIds.length === 0) return [];
+    return museumIds.map(id => museums.find(m => m.id === id)?.name).filter(Boolean) as string[];
   };
 
   const getGroupNames = (groupIds: string[]) => {
@@ -765,12 +786,20 @@ export const UserSettings = () => {
                         <Badge variant={isAdmin ? 'default' : 'secondary'}>
                           {isAdmin ? 'Admin' : 'Gişe'}
                         </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">@{user.username}</p>
+                        {user.assigned_museums && user.assigned_museums.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {getAssignedMuseumNames(user.assigned_museums).map((name, i) => (
+                              <Badge key={i} variant="outline" className="text-xs">
+                                {name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-1">Müze atanmamış</p>
+                        )}
                       </div>
-                      <p className="text-sm text-muted-foreground">@{user.username}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Müze: {getMuseumName(user.assigned_museum_id)}
-                      </p>
-                    </div>
 
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-2">
@@ -913,7 +942,7 @@ export const UserSettings = () => {
 
       {/* Museum Assignment Dialog */}
       <Dialog open={!!museumDialogUser} onOpenChange={(open) => !open && setMuseumDialogUser(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="w-5 h-5" />
@@ -922,23 +951,29 @@ export const UserSettings = () => {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Atanacak Müze</Label>
-              <Select 
-                value={selectedMuseumForUser || 'none'} 
-                onValueChange={(v) => setSelectedMuseumForUser(v === 'none' ? '' : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Müze seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Atanmamış</SelectItem>
-                  {museums.map(m => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Atanacak Müzeler (Birden fazla seçebilirsiniz)</Label>
+              <div className="border rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
+                {museums.map(m => (
+                  <div key={m.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`museum-${m.id}`}
+                      checked={selectedMuseumsForUser.includes(m.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedMuseumsForUser(prev => [...prev, m.id]);
+                        } else {
+                          setSelectedMuseumsForUser(prev => prev.filter(id => id !== m.id));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`museum-${m.id}`} className="cursor-pointer flex-1">
+                      {m.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Kullanıcı sadece atandığı müzede bilet satabilecektir.
+                Kullanıcı sadece atandığı müzelerde bilet satabilecektir.
               </p>
             </div>
             <Button 
@@ -947,7 +982,7 @@ export const UserSettings = () => {
               disabled={updatingMuseum}
             >
               {updatingMuseum ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Müze Ata
+              Müzeleri Kaydet ({selectedMuseumsForUser.length} seçili)
             </Button>
           </div>
         </DialogContent>
