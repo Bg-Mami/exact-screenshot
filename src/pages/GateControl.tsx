@@ -27,7 +27,7 @@ interface ValidationResult {
 }
 
 const GateControl = () => {
-  const { isAdmin, profile } = useAuth();
+  const { isAdmin, profile, user } = useAuth();
   const [museums, setMuseums] = useState<Museum[]>([]);
   const [selectedMuseum, setSelectedMuseum] = useState<string>("");
   const [qrInput, setQrInput] = useState("");
@@ -49,14 +49,7 @@ const GateControl = () => {
 
   useEffect(() => {
     fetchMuseums();
-  }, []);
-
-  useEffect(() => {
-    // Auto-select museum for non-admin users
-    if (!isAdmin && profile?.assigned_museum_id) {
-      setSelectedMuseum(profile.assigned_museum_id);
-    }
-  }, [isAdmin, profile]);
+  }, [user, profile]);
 
   useEffect(() => {
     // Keep focus on input for barcode scanner
@@ -66,13 +59,77 @@ const GateControl = () => {
   }, [validationResult, isProcessing]);
 
   const fetchMuseums = async () => {
-    const { data } = await supabase
-      .from('museums')
-      .select('id, name')
-      .eq('is_active', true)
-      .order('name');
-    
-    if (data) setMuseums(data);
+    if (!user) return;
+
+    const [museumsRes, rolesRes] = await Promise.all([
+      supabase.from('museums').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('user_roles').select('role').eq('user_id', user.id),
+    ]);
+
+    const allMuseums = museumsRes.data || [];
+    const userRoles = rolesRes.data || [];
+    const userIsAdmin = userRoles.some(r => r.role === 'admin');
+
+    if (userIsAdmin) {
+      // Admins see all museums
+      setMuseums(allMuseums);
+      if (allMuseums.length === 1) {
+        setSelectedMuseum(allMuseums[0].id);
+      }
+    } else {
+      // Non-admins: first check direct museum assignments (user_museums table)
+      const { data: userMuseums } = await supabase
+        .from('user_museums')
+        .select('museum_id')
+        .eq('user_id', user.id);
+
+      if (userMuseums && userMuseums.length > 0) {
+        // User has direct museum assignments
+        const allowedMuseumIds = userMuseums.map(m => m.museum_id);
+        const filteredMuseums = allMuseums.filter(m => allowedMuseumIds.includes(m.id));
+        setMuseums(filteredMuseums);
+        
+        if (filteredMuseums.length === 1) {
+          setSelectedMuseum(filteredMuseums[0].id);
+        }
+      } else {
+        // Fallback to museum groups
+        const { data: userGroups } = await supabase
+          .from('user_museum_groups')
+          .select('group_id')
+          .eq('user_id', user.id);
+
+        if (userGroups && userGroups.length > 0) {
+          const groupIds = userGroups.map(g => g.group_id);
+          
+          const { data: groupMembers } = await supabase
+            .from('museum_group_members')
+            .select('museum_id')
+            .in('group_id', groupIds);
+
+          if (groupMembers && groupMembers.length > 0) {
+            const allowedMuseumIds = [...new Set(groupMembers.map(m => m.museum_id))];
+            const filteredMuseums = allMuseums.filter(m => allowedMuseumIds.includes(m.id));
+            setMuseums(filteredMuseums);
+            
+            if (filteredMuseums.length === 1) {
+              setSelectedMuseum(filteredMuseums[0].id);
+            }
+          } else {
+            setMuseums([]);
+          }
+        } else if (profile?.assigned_museum_id) {
+          // Fallback to old single museum assignment
+          const assignedMuseum = allMuseums.filter(m => m.id === profile.assigned_museum_id);
+          setMuseums(assignedMuseum);
+          if (assignedMuseum.length === 1) {
+            setSelectedMuseum(assignedMuseum[0].id);
+          }
+        } else {
+          setMuseums([]);
+        }
+      }
+    }
   };
 
   const playSound = (success: boolean) => {
