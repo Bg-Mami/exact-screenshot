@@ -474,6 +474,13 @@ const SellTicket = () => {
                 )}
               </div>
               <CardContent className="p-6 flex flex-col items-center bg-white">
+                <p className="text-sm text-muted-foreground mb-2">
+                  {new Date(generatedTickets[currentTicketIndex].created_at).toLocaleDateString('tr-TR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                  })}
+                </p>
                 <QRCodeSVG value={generatedTickets[currentTicketIndex].qr_code} size={180} level="H" />
                 <p className="mt-3 text-lg font-mono font-bold tracking-wider">{generatedTickets[currentTicketIndex].qr_code}</p>
                 <p className="mt-2 text-2xl font-bold text-primary">₺{generatedTickets[currentTicketIndex].price}</p>
@@ -541,10 +548,15 @@ const SellTicket = () => {
                       const remaining = s.capacity - s.sold_count;
                       const isFull = remaining <= 0;
                       return (
-                        <SelectItem key={s.id} value={s.id} disabled={isFull}>
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4" />
-                            <span className="font-medium">{s.name || 'Seans'}</span>
+                        <SelectItem 
+                          key={s.id} 
+                          value={s.id} 
+                          disabled={isFull}
+                          className={isFull ? 'opacity-50 cursor-not-allowed line-through' : ''}
+                        >
+                          <div className={`flex items-center gap-2 ${isFull ? 'text-muted-foreground' : ''}`}>
+                            <Clock className={`w-4 h-4 ${isFull ? 'text-muted-foreground' : ''}`} />
+                            <span className={`font-medium ${isFull ? 'text-muted-foreground' : ''}`}>{s.name || 'Seans'}</span>
                             <span className="text-muted-foreground">
                               {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}
                             </span>
