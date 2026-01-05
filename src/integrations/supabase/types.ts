@@ -559,6 +559,42 @@ export type Database = {
           },
         ]
       }
+      user_museums: {
+        Row: {
+          created_at: string | null
+          id: string
+          museum_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          museum_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          museum_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_museums_museum_id_fkey"
+            columns: ["museum_id"]
+            isOneToOne: false
+            referencedRelation: "museums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_museums_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_permissions: {
         Row: {
           id: string
