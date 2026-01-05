@@ -117,8 +117,21 @@ export const UserSettings = () => {
 
     setCreating(true);
 
-    // Generate internal email from username
-    const internalEmail = `${newUser.username.toLowerCase().replace(/\s+/g, '')}@local`;
+    // Generate internal email from username - sanitize Turkish chars and spaces
+    const sanitizeForEmail = (str: string) => {
+      const turkishMap: Record<string, string> = {
+        'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G', 'ı': 'i', 'I': 'I',
+        'İ': 'I', 'ö': 'o', 'Ö': 'O', 'ş': 's', 'Ş': 'S', 'ü': 'u', 'Ü': 'U'
+      };
+      return str
+        .split('')
+        .map(char => turkishMap[char] || char)
+        .join('')
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/[^a-z0-9]/g, '');
+    };
+    const internalEmail = `${sanitizeForEmail(newUser.username)}@local`;
 
     // Create auth user
     const { data: authData, error: authError } = await supabase.auth.signUp({
