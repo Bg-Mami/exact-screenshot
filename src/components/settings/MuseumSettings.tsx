@@ -7,7 +7,21 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Plus, Building2, Trash2, Save } from 'lucide-react';
+import { Loader2, Plus, Building2, Trash2, Save, Banknote } from 'lucide-react';
+
+interface TicketType {
+  id: string;
+  name: string;
+  price: number;
+}
+
+interface MuseumTicketPrice {
+  id: string;
+  museum_id: string;
+  ticket_type_id: string;
+  price: number;
+  is_active: boolean;
+}
 
 interface Museum {
   id: string;
@@ -22,10 +36,85 @@ export const MuseumSettings = () => {
   const [saving, setSaving] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newMuseum, setNewMuseum] = useState({ name: '', address: '' });
+  
+  // Pricing dialog state
+  const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
+  const [selectedMuseum, setSelectedMuseum] = useState<Museum | null>(null);
+  const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
+  const [museumPrices, setMuseumPrices] = useState<MuseumTicketPrice[]>([]);
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+  const [savingPrices, setSavingPrices] = useState(false);
 
   useEffect(() => {
     fetchMuseums();
+    fetchTicketTypes();
   }, []);
+
+  const fetchTicketTypes = async () => {
+    const { data, error } = await supabase
+      .from('ticket_types')
+      .select('id, name, price')
+      .eq('is_active', true)
+      .order('name');
+
+    if (!error && data) {
+      setTicketTypes(data);
+    }
+  };
+
+  const fetchMuseumPrices = async (museumId: string) => {
+    const { data, error } = await supabase
+      .from('museum_ticket_prices')
+      .select('*')
+      .eq('museum_id', museumId);
+
+    if (!error && data) {
+      setMuseumPrices(data);
+      const inputs: Record<string, string> = {};
+      data.forEach(p => {
+        inputs[p.ticket_type_id] = p.price.toString();
+      });
+      setPriceInputs(inputs);
+    }
+  };
+
+  const openPricingDialog = async (museum: Museum) => {
+    setSelectedMuseum(museum);
+    setPricingDialogOpen(true);
+    await fetchMuseumPrices(museum.id);
+  };
+
+  const handleSavePrices = async () => {
+    if (!selectedMuseum) return;
+    setSavingPrices(true);
+
+    try {
+      for (const ticketType of ticketTypes) {
+        const priceValue = parseFloat(priceInputs[ticketType.id] || '0');
+        const existingPrice = museumPrices.find(p => p.ticket_type_id === ticketType.id);
+
+        if (existingPrice) {
+          await supabase
+            .from('museum_ticket_prices')
+            .update({ price: priceValue })
+            .eq('id', existingPrice.id);
+        } else if (priceValue > 0) {
+          await supabase
+            .from('museum_ticket_prices')
+            .insert({
+              museum_id: selectedMuseum.id,
+              ticket_type_id: ticketType.id,
+              price: priceValue
+            });
+        }
+      }
+      toast.success('Fiyatlar kaydedildi');
+      setPricingDialogOpen(false);
+    } catch {
+      toast.error('Fiyatlar kaydedilemedi');
+    }
+    setSavingPrices(false);
+  };
 
   const fetchMuseums = async () => {
     const { data, error } = await supabase
@@ -213,6 +302,16 @@ export const MuseumSettings = () => {
 
                     <Button
                       size="sm"
+                      variant="outline"
+                      onClick={() => openPricingDialog(museum)}
+                      className="gap-2"
+                    >
+                      <Banknote className="w-4 h-4" />
+                      Fiyatlandır
+                    </Button>
+
+                    <Button
+                      size="sm"
                       onClick={() => handleUpdate(museum)}
                       disabled={saving === museum.id}
                       className="gap-2"
@@ -238,6 +337,61 @@ export const MuseumSettings = () => {
           ))}
         </div>
       )}
+
+      {/* Pricing Dialog */}
+      <Dialog open={pricingDialogOpen} onOpenChange={setPricingDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="w-5 h-5 text-primary" />
+              {selectedMuseum?.name} - Bilet Fiyatları
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {ticketTypes.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Henüz bilet türü eklenmemiş
+              </p>
+            ) : (
+              ticketTypes.map((ticketType) => (
+                <div key={ticketType.id} className="flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <Label className="text-sm font-medium">{ticketType.name}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Varsayılan: ₺{ticketType.price}
+                    </p>
+                  </div>
+                  <div className="w-32">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="₺0.00"
+                      value={priceInputs[ticketType.id] || ''}
+                      onChange={(e) => setPriceInputs({
+                        ...priceInputs,
+                        [ticketType.id]: e.target.value
+                      })}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <Button
+            onClick={handleSavePrices}
+            disabled={savingPrices}
+            className="w-full gradient-primary border-0"
+          >
+            {savingPrices ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Kaydet
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

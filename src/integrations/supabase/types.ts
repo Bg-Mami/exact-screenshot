@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      museum_ticket_prices: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          museum_id: string
+          price: number
+          ticket_type_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          museum_id: string
+          price?: number
+          ticket_type_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          museum_id?: string
+          price?: number
+          ticket_type_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "museum_ticket_prices_museum_id_fkey"
+            columns: ["museum_id"]
+            isOneToOne: false
+            referencedRelation: "museums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "museum_ticket_prices_ticket_type_id_fkey"
+            columns: ["ticket_type_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       museums: {
         Row: {
           address: string | null
