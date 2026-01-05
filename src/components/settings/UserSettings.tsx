@@ -236,16 +236,31 @@ export const UserSettings = () => {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) return;
+    if (!confirm('Bu kullanıcıyı kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) return;
 
-    // Note: This only deletes the profile, the auth user remains
-    const { error } = await supabase.from('profiles').delete().eq('id', userId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ userId }),
+      });
 
-    if (error) {
-      toast.error('Silme başarısız');
-    } else {
-      toast.success('Kullanıcı silindi');
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || 'Silme başarısız');
+        return;
+      }
+
+      toast.success('Kullanıcı kalıcı olarak silindi');
       fetchData();
+    } catch (error) {
+      toast.error('Silme işlemi başarısız');
     }
   };
 
