@@ -435,6 +435,7 @@ export type Database = {
         | "manage_sessions"
         | "manage_ticket_types"
         | "manage_settings"
+        | "delete_tickets"
       app_role: "admin" | "cashier"
     }
     CompositeTypes: {
@@ -571,6 +572,7 @@ export const Constants = {
         "manage_sessions",
         "manage_ticket_types",
         "manage_settings",
+        "delete_tickets",
       ],
       app_role: ["admin", "cashier"],
     },
