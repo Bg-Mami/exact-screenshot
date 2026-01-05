@@ -73,14 +73,19 @@ const Reports = () => {
   }, [selectedDate, selectedMuseum, museums]);
 
   const fetchInitialData = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     const [museumsRes, typesRes, permsRes, rolesRes] = await Promise.all([
-      supabase.from('museums').select('id, name').eq('is_active', true),
+      supabase.from('museums').select('id, name').eq('is_active', true).order('name'),
       supabase.from('ticket_types').select('*'),
-      user ? supabase.from('user_permissions').select('permission').eq('user_id', user.id) : Promise.resolve({ data: [] }),
-      user ? supabase.from('user_roles').select('role').eq('user_id', user.id) : Promise.resolve({ data: [] }),
+      supabase.from('user_permissions').select('permission').eq('user_id', user.id),
+      supabase.from('user_roles').select('role').eq('user_id', user.id),
     ]);
 
-    setMuseums(museumsRes.data || []);
+    const allMuseums = museumsRes.data || [];
     setTicketTypes(typesRes.data || []);
 
     const permissions = (permsRes.data || []).map(p => p.permission);
@@ -89,6 +94,59 @@ const Reports = () => {
     
     // Admin has delete_tickets permission implicitly
     setCanDeleteTickets(isAdmin || permissions.includes('delete_tickets'));
+
+    // Filter museums based on user assignments
+    if (isAdmin) {
+      setMuseums(allMuseums);
+    } else {
+      // Check direct museum assignments
+      const { data: userMuseums } = await supabase
+        .from('user_museums')
+        .select('museum_id')
+        .eq('user_id', user.id);
+
+      if (userMuseums && userMuseums.length > 0) {
+        const allowedMuseumIds = userMuseums.map(m => m.museum_id);
+        const filteredMuseums = allMuseums.filter(m => allowedMuseumIds.includes(m.id));
+        setMuseums(filteredMuseums);
+        if (filteredMuseums.length === 1) {
+          setSelectedMuseum(filteredMuseums[0].id);
+        }
+      } else {
+        // Fallback to museum groups
+        const { data: userGroups } = await supabase
+          .from('user_museum_groups')
+          .select('group_id')
+          .eq('user_id', user.id);
+
+        if (userGroups && userGroups.length > 0) {
+          const groupIds = userGroups.map(g => g.group_id);
+          const { data: groupMembers } = await supabase
+            .from('museum_group_members')
+            .select('museum_id')
+            .in('group_id', groupIds);
+
+          if (groupMembers && groupMembers.length > 0) {
+            const allowedMuseumIds = [...new Set(groupMembers.map(m => m.museum_id))];
+            const filteredMuseums = allMuseums.filter(m => allowedMuseumIds.includes(m.id));
+            setMuseums(filteredMuseums);
+            if (filteredMuseums.length === 1) {
+              setSelectedMuseum(filteredMuseums[0].id);
+            }
+          } else {
+            setMuseums([]);
+          }
+        } else if (profile?.assigned_museum_id) {
+          const assignedMuseum = allMuseums.filter(m => m.id === profile.assigned_museum_id);
+          setMuseums(assignedMuseum);
+          if (assignedMuseum.length === 1) {
+            setSelectedMuseum(assignedMuseum[0].id);
+          }
+        } else {
+          setMuseums([]);
+        }
+      }
+    }
     
     setLoading(false);
   };
