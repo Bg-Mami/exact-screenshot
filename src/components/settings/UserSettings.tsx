@@ -61,7 +61,6 @@ export const UserSettings = () => {
   const [selectedRoleForUser, setSelectedRoleForUser] = useState<AppRole>('cashier');
   const [selectedMuseumForUser, setSelectedMuseumForUser] = useState<string>('');
   const [newUser, setNewUser] = useState({
-    email: '',
     password: '',
     username: '',
     full_name: '',
@@ -106,7 +105,7 @@ export const UserSettings = () => {
   };
 
   const handleCreateUser = async () => {
-    if (!newUser.email || !newUser.password || !newUser.username || !newUser.full_name) {
+    if (!newUser.password || !newUser.username || !newUser.full_name) {
       toast.error('Tüm alanları doldurun');
       return;
     }
@@ -118,9 +117,12 @@ export const UserSettings = () => {
 
     setCreating(true);
 
+    // Generate internal email from username
+    const internalEmail = `${newUser.username.toLowerCase().replace(/\s+/g, '')}@local`;
+
     // Create auth user
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: newUser.email,
+      email: internalEmail,
       password: newUser.password,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
@@ -173,7 +175,7 @@ export const UserSettings = () => {
 
     toast.success('Kullanıcı oluşturuldu');
     setDialogOpen(false);
-    setNewUser({ email: '', password: '', username: '', full_name: '', role: 'cashier', museum_id: '' });
+    setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '' });
     setCreating(false);
     fetchData();
   };
@@ -368,15 +370,6 @@ export const UserSettings = () => {
                     placeholder="Ahmet Yılmaz"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>E-posta *</Label>
-                <Input
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  placeholder="ahmet@muze.gov.tr"
-                />
               </div>
               <div className="space-y-2">
                 <Label>Şifre * (min 6 karakter)</Label>
