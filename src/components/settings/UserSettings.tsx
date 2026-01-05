@@ -75,7 +75,7 @@ export const UserSettings = () => {
   const [selectedRoleForUser, setSelectedRoleForUser] = useState<AppRole>('cashier');
   const [selectedMuseumsForUser, setSelectedMuseumsForUser] = useState<string[]>([]);
   const [selectedGroupsForUser, setSelectedGroupsForUser] = useState<string[]>([]);
-  const [editFormData, setEditFormData] = useState({ username: '', full_name: '' });
+  const [editFormData, setEditFormData] = useState({ username: '', full_name: '', museum_ids: [] as string[] });
   const [newPassword, setNewPassword] = useState('');
   const [newUser, setNewUser] = useState({
     password: '',
@@ -481,9 +481,24 @@ export const UserSettings = () => {
     return groupIds.map(id => museumGroups.find(g => g.id === id)?.name).filter(Boolean) as string[];
   };
 
-  const openEditDialog = (user: UserProfile) => {
+  const openEditDialog = async (user: UserProfile) => {
+    // Fetch latest museums
+    const { data: latestMuseums } = await supabase
+      .from('museums')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+    
+    if (latestMuseums) {
+      setMuseums(latestMuseums);
+    }
+    
     setEditDialogUser(user);
-    setEditFormData({ username: user.username, full_name: user.full_name });
+    setEditFormData({ 
+      username: user.username, 
+      full_name: user.full_name,
+      museum_ids: user.assigned_museums || []
+    });
   };
 
   const openPasswordDialog = (user: UserProfile) => {
@@ -506,6 +521,7 @@ export const UserSettings = () => {
           userId: editDialogUser.id,
           username: editFormData.username,
           full_name: editFormData.full_name,
+          museum_ids: editFormData.museum_ids,
         },
       });
 
@@ -521,7 +537,7 @@ export const UserSettings = () => {
 
       setUsers(prev => prev.map(u =>
         u.id === editDialogUser.id
-          ? { ...u, username: editFormData.username, full_name: editFormData.full_name }
+          ? { ...u, username: editFormData.username, full_name: editFormData.full_name, assigned_museums: editFormData.museum_ids }
           : u
       ));
       toast.success('Profil güncellendi');
@@ -1127,6 +1143,32 @@ export const UserSettings = () => {
                 onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
                 placeholder="Örnek Kullanıcı"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Atanacak Müzeler</Label>
+              <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2">
+                {museums.map(m => (
+                  <div key={m.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-museum-${m.id}`}
+                      checked={editFormData.museum_ids.includes(m.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setEditFormData(prev => ({ ...prev, museum_ids: [...prev.museum_ids, m.id] }));
+                        } else {
+                          setEditFormData(prev => ({ ...prev, museum_ids: prev.museum_ids.filter(id => id !== m.id) }));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`edit-museum-${m.id}`} className="cursor-pointer text-sm">
+                      {m.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Seçili: {editFormData.museum_ids.length} müze
+              </p>
             </div>
             <Button 
               onClick={handleUpdateProfile} 
