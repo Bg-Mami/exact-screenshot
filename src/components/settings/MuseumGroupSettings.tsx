@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -83,28 +83,28 @@ export const MuseumGroupSettings = () => {
 
   // Create/Update mutation
   const saveMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string; selectedMuseums: string[]; id?: string }) => {
-      if (data.id) {
+    mutationFn: async (formDataToSave: { name: string; description: string; selectedMuseums: string[]; id?: string }) => {
+      if (formDataToSave.id) {
         // Update group
         const { error: updateError } = await supabase
           .from('museum_groups')
-          .update({ name: data.name, description: data.description || null })
-          .eq('id', data.id);
+          .update({ name: formDataToSave.name, description: formDataToSave.description || null })
+          .eq('id', formDataToSave.id);
         if (updateError) throw updateError;
 
         // Delete existing members
         const { error: deleteError } = await supabase
           .from('museum_group_members')
           .delete()
-          .eq('group_id', data.id);
+          .eq('group_id', formDataToSave.id);
         if (deleteError) throw deleteError;
 
         // Add new members
-        if (data.selectedMuseums.length > 0) {
+        if (formDataToSave.selectedMuseums.length > 0) {
           const { error: insertError } = await supabase
             .from('museum_group_members')
-            .insert(data.selectedMuseums.map(museumId => ({
-              group_id: data.id!,
+            .insert(formDataToSave.selectedMuseums.map(museumId => ({
+              group_id: formDataToSave.id!,
               museum_id: museumId
             })));
           if (insertError) throw insertError;
@@ -113,16 +113,16 @@ export const MuseumGroupSettings = () => {
         // Create new group
         const { data: newGroup, error: createError } = await supabase
           .from('museum_groups')
-          .insert({ name: data.name, description: data.description || null })
+          .insert({ name: formDataToSave.name, description: formDataToSave.description || null })
           .select()
           .single();
         if (createError) throw createError;
 
         // Add members
-        if (data.selectedMuseums.length > 0) {
+        if (formDataToSave.selectedMuseums.length > 0) {
           const { error: insertError } = await supabase
             .from('museum_group_members')
-            .insert(data.selectedMuseums.map(museumId => ({
+            .insert(formDataToSave.selectedMuseums.map(museumId => ({
               group_id: newGroup.id,
               museum_id: museumId
             })));
@@ -250,73 +250,77 @@ export const MuseumGroupSettings = () => {
           <Plus className="w-4 h-4" />
           Yeni Grup
         </Button>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleCloseDialog()}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {editingGroup ? 'Grubu Düzenle' : 'Yeni Müze Grubu'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Grup Adı</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Örn: Gişe 1 Müzeleri"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Açıklama (Opsiyonel)</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Grup açıklaması..."
-                  rows={2}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Müzeler</Label>
-                <div className="border rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
-                  {museums.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-2">
-                      Henüz müze eklenmemiş
-                    </p>
-                  ) : (
-                    museums.map(museum => (
-                      <div 
-                        key={museum.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
-                        onClick={() => toggleMuseum(museum.id)}
-                      >
-                        <Checkbox
-                          checked={formData.selectedMuseums.includes(museum.id)}
-                          onCheckedChange={() => toggleMuseum(museum.id)}
-                        />
-                        <Building2 className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-sm">{museum.name}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {formData.selectedMuseums.length} müze seçildi
-                </p>
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                  İptal
-                </Button>
-                <Button type="submit" disabled={saveMutation.isPending}>
-                  {saveMutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingGroup ? 'Grubu Düzenle' : 'Yeni Müze Grubu'}
+            </DialogTitle>
+            <DialogDescription>
+              Müze grubu bilgilerini girin ve dahil edilecek müzeleri seçin.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Grup Adı</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Örn: Gişe 1 Müzeleri"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Açıklama (Opsiyonel)</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Grup açıklaması..."
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Müzeler</Label>
+              <div className="border rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                {museums.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-2">
+                    Henüz müze eklenmemiş
+                  </p>
+                ) : (
+                  museums.map(museum => (
+                    <div 
+                      key={museum.id}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                      onClick={() => toggleMuseum(museum.id)}
+                    >
+                      <Checkbox
+                        checked={formData.selectedMuseums.includes(museum.id)}
+                        onCheckedChange={() => toggleMuseum(museum.id)}
+                      />
+                      <Building2 className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm">{museum.name}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {formData.selectedMuseums.length} müze seçildi
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                İptal
+              </Button>
+              <Button type="submit" disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {groups.length === 0 ? (
         <Card>
@@ -360,7 +364,7 @@ export const MuseumGroupSettings = () => {
                         size="icon"
                         onClick={() => toggleActiveMutation.mutate({ 
                           id: group.id, 
-                          isActive: !group.is_active 
+                          isActive: group.is_active === false 
                         })}
                         title={group.is_active !== false ? 'Pasif Yap' : 'Aktif Yap'}
                       >
