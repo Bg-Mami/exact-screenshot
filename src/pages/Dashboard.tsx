@@ -1,12 +1,14 @@
+import { useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StatsCard } from '@/components/StatsCard';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Ticket, TrendingUp, Users, Wallet, Building2 } from 'lucide-react';
+import { Ticket, TrendingUp, Users, Wallet, Building2, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as LucideIcons from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { Badge } from '@/components/ui/badge';
 
 const CHART_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
@@ -213,6 +215,34 @@ const Dashboard = () => {
     enabled: userMuseumIds !== undefined,
   });
 
+  // Realtime subscription for tickets
+  const queryClient = useQueryClient();
+  
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tickets'
+        },
+        (payload) => {
+          console.log('Realtime update:', payload);
+          // Invalidate queries to refetch data
+          queryClient.invalidateQueries({ queryKey: ['tickets'] });
+          queryClient.invalidateQueries({ queryKey: ['today-stats'] });
+          queryClient.invalidateQueries({ queryKey: ['total-tickets'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   const getIconComponent = (iconName: string) => {
     const Icon = (LucideIcons as any)[iconName];
     return Icon ? <Icon className="w-5 h-5" /> : <Ticket className="w-5 h-5" />;
@@ -222,11 +252,17 @@ const Dashboard = () => {
     <Layout>
       <div className="space-y-8">
         {/* Header */}
-        <div className="animate-fade-in">
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Bugünkü satış özeti ve istatistikler
-          </p>
+        <div className="animate-fade-in flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              Bugünkü satış özeti ve istatistikler
+            </p>
+          </div>
+          <Badge variant="outline" className="gap-1 text-success border-success/50">
+            <Zap className="w-3 h-3" />
+            Canlı
+          </Badge>
         </div>
 
         {/* Main Stats */}

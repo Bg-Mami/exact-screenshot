@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { userId, username, full_name } = await req.json();
+    const { userId, username, full_name, museum_ids } = await req.json();
 
     if (!userId || !username || !full_name) {
       return new Response(JSON.stringify({ error: 'Tüm alanlar gerekli' }), {
@@ -77,6 +77,26 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Update museum assignments if provided
+    if (museum_ids !== undefined) {
+      // Delete existing museum assignments
+      await supabaseAdmin
+        .from('user_museums')
+        .delete()
+        .eq('user_id', userId);
+
+      // Insert new museum assignments
+      if (museum_ids && museum_ids.length > 0) {
+        const { error: museumError } = await supabaseAdmin
+          .from('user_museums')
+          .insert(museum_ids.map((museum_id: string) => ({ user_id: userId, museum_id })));
+
+        if (museumError) {
+          console.error('Museum assignment error:', museumError);
+        }
+      }
     }
 
     // Update user metadata in auth.users
