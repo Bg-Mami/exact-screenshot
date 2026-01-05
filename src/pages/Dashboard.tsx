@@ -1,12 +1,68 @@
 import { Layout } from '@/components/Layout';
 import { StatsCard } from '@/components/StatsCard';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { Ticket, TrendingUp, Users, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import * as LucideIcons from 'lucide-react';
 
 const Dashboard = () => {
+  const { user, isAdmin, profile } = useAuth();
+
+  // Fetch user's assigned museums
+  const { data: userMuseumIds = [] } = useQuery({
+    queryKey: ['user-museums', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      
+      // Check if admin - admins see all
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id);
+      
+      const userIsAdmin = roles?.some(r => r.role === 'admin');
+      if (userIsAdmin) return null; // null means all museums
+      
+      // Check direct museum assignments
+      const { data: userMuseums } = await supabase
+        .from('user_museums')
+        .select('museum_id')
+        .eq('user_id', user.id);
+      
+      if (userMuseums && userMuseums.length > 0) {
+        return userMuseums.map(m => m.museum_id);
+      }
+      
+      // Fallback to museum groups
+      const { data: userGroups } = await supabase
+        .from('user_museum_groups')
+        .select('group_id')
+        .eq('user_id', user.id);
+      
+      if (userGroups && userGroups.length > 0) {
+        const groupIds = userGroups.map(g => g.group_id);
+        const { data: groupMembers } = await supabase
+          .from('museum_group_members')
+          .select('museum_id')
+          .in('group_id', groupIds);
+        
+        if (groupMembers && groupMembers.length > 0) {
+          return [...new Set(groupMembers.map(m => m.museum_id))];
+        }
+      }
+      
+      // Fallback to old single assignment
+      if (profile?.assigned_museum_id) {
+        return [profile.assigned_museum_id];
+      }
+      
+      return [];
+    },
+    enabled: !!user,
+  });
+
   // Fetch ticket types from database
   const { data: ticketTypes = [] } = useQuery({
     queryKey: ['ticket-types'],
@@ -21,11 +77,11 @@ const Dashboard = () => {
     }
   });
 
-  // Fetch tickets from database
+  // Fetch tickets from database (filtered by user's museums)
   const { data: tickets = [] } = useQuery({
-    queryKey: ['tickets'],
+    queryKey: ['tickets', userMuseumIds],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('tickets')
         .select(`
           *,
@@ -33,6 +89,15 @@ const Dashboard = () => {
         `)
         .order('created_at', { ascending: false })
         .limit(10);
+      
+      // Filter by museums if not admin
+      if (userMuseumIds !== null && userMuseumIds.length > 0) {
+        query = query.in('museum_id', userMuseumIds);
+      } else if (userMuseumIds !== null && userMuseumIds.length === 0) {
+        return []; // No museums assigned
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       
       // Fetch seller names separately
@@ -48,7 +113,8 @@ const Dashboard = () => {
       );
       
       return ticketsWithSellers;
-    }
+    },
+    enabled: userMuseumIds !== undefined,
   });
 
   // Fetch active staff count
@@ -65,16 +131,26 @@ const Dashboard = () => {
     }
   });
 
-  // Fetch today's stats
+  // Fetch today's stats (filtered by user's museums)
   const { data: todayStats } = useQuery({
-    queryKey: ['today-stats'],
+    queryKey: ['today-stats', userMuseumIds],
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
+      
+      let query = supabase
         .from('tickets')
         .select('price, ticket_type_id')
         .gte('created_at', `${today}T00:00:00`)
         .lte('created_at', `${today}T23:59:59`);
+      
+      // Filter by museums if not admin
+      if (userMuseumIds !== null && userMuseumIds.length > 0) {
+        query = query.in('museum_id', userMuseumIds);
+      } else if (userMuseumIds !== null && userMuseumIds.length === 0) {
+        return { total: 0, revenue: 0, byType: {} };
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       
       const total = data.length;
@@ -85,19 +161,28 @@ const Dashboard = () => {
       });
       
       return { total, revenue, byType };
-    }
+    },
+    enabled: userMuseumIds !== undefined,
   });
 
-  // Fetch total tickets count
+  // Fetch total tickets count (filtered by user's museums)
   const { data: totalTickets = 0 } = useQuery({
-    queryKey: ['total-tickets'],
+    queryKey: ['total-tickets', userMuseumIds],
     queryFn: async () => {
-      const { count, error } = await supabase
-        .from('tickets')
-        .select('*', { count: 'exact', head: true });
+      let query = supabase.from('tickets').select('*', { count: 'exact', head: true });
+      
+      // Filter by museums if not admin
+      if (userMuseumIds !== null && userMuseumIds.length > 0) {
+        query = query.in('museum_id', userMuseumIds);
+      } else if (userMuseumIds !== null && userMuseumIds.length === 0) {
+        return 0;
+      }
+      
+      const { count, error } = await query;
       if (error) throw error;
       return count || 0;
-    }
+    },
+    enabled: userMuseumIds !== undefined,
   });
 
   const getIconComponent = (iconName: string) => {
