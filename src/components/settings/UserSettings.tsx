@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog } from 'lucide-react';
+import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen } from 'lucide-react';
 
 type AppRole = 'admin' | 'cashier';
 type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings' | 'delete_tickets';
@@ -23,9 +23,15 @@ interface UserProfile {
   assigned_museum_id: string | null;
   roles: AppRole[];
   permissions: AppPermission[];
+  museum_groups: string[];
 }
 
 interface Museum {
+  id: string;
+  name: string;
+}
+
+interface MuseumGroup {
   id: string;
   name: string;
 }
@@ -55,13 +61,16 @@ const ALL_PERMISSIONS: AppPermission[] = [
 export const UserSettings = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [museums, setMuseums] = useState<Museum[]>([]);
+  const [museumGroups, setMuseumGroups] = useState<MuseumGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [permDialogUser, setPermDialogUser] = useState<UserProfile | null>(null);
   const [museumDialogUser, setMuseumDialogUser] = useState<UserProfile | null>(null);
   const [roleDialogUser, setRoleDialogUser] = useState<UserProfile | null>(null);
+  const [groupDialogUser, setGroupDialogUser] = useState<UserProfile | null>(null);
   const [selectedRoleForUser, setSelectedRoleForUser] = useState<AppRole>('cashier');
   const [selectedMuseumForUser, setSelectedMuseumForUser] = useState<string>('');
+  const [selectedGroupsForUser, setSelectedGroupsForUser] = useState<string[]>([]);
   const [newUser, setNewUser] = useState({
     password: '',
     username: '',
@@ -69,21 +78,25 @@ export const UserSettings = () => {
     role: 'cashier' as AppRole,
     museum_id: '',
     permissions: ['sell_tickets', 'view_reports'] as AppPermission[],
+    museum_groups: [] as string[],
   });
   const [creating, setCreating] = useState(false);
   const [updatingMuseum, setUpdatingMuseum] = useState(false);
   const [updatingRole, setUpdatingRole] = useState(false);
+  const [updatingGroups, setUpdatingGroups] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
-    const [profilesRes, rolesRes, permsRes, museumsRes] = await Promise.all([
+    const [profilesRes, rolesRes, permsRes, museumsRes, groupsRes, userGroupsRes] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('user_roles').select('*'),
       supabase.from('user_permissions').select('*'),
       supabase.from('museums').select('id, name').eq('is_active', true),
+      supabase.from('museum_groups').select('id, name').eq('is_active', true),
+      supabase.from('user_museum_groups').select('*'),
     ]);
 
     if (profilesRes.error || rolesRes.error || permsRes.error) {
@@ -95,15 +108,18 @@ export const UserSettings = () => {
     const profiles = profilesRes.data || [];
     const roles = rolesRes.data || [];
     const permissions = permsRes.data || [];
+    const userGroups = userGroupsRes.data || [];
 
     const usersWithRoles: UserProfile[] = profiles.map(p => ({
       ...p,
       roles: roles.filter(r => r.user_id === p.id).map(r => r.role as AppRole),
       permissions: permissions.filter(pr => pr.user_id === p.id).map(pr => pr.permission as AppPermission),
+      museum_groups: userGroups.filter(ug => ug.user_id === p.id).map(ug => ug.group_id),
     }));
 
     setUsers(usersWithRoles);
     setMuseums(museumsRes.data || []);
+    setMuseumGroups(groupsRes.data || []);
     setLoading(false);
   };
 
@@ -188,9 +204,16 @@ export const UserSettings = () => {
       );
     }
 
+    // Assign museum groups
+    if (newUser.museum_groups.length > 0) {
+      await supabase.from('user_museum_groups').insert(
+        newUser.museum_groups.map(group_id => ({ user_id: userId, group_id }))
+      );
+    }
+
     toast.success('Kullanıcı oluşturuldu');
     setDialogOpen(false);
-    setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '', permissions: ['sell_tickets', 'view_reports'] });
+    setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '', permissions: ['sell_tickets', 'view_reports'], museum_groups: [] });
     setCreating(false);
     fetchData();
   };
@@ -335,9 +358,64 @@ export const UserSettings = () => {
     setUpdatingRole(false);
   };
 
+  const openGroupDialog = (user: UserProfile) => {
+    setGroupDialogUser(user);
+    setSelectedGroupsForUser(user.museum_groups || []);
+  };
+
+  const handleUpdateGroups = async () => {
+    if (!groupDialogUser) return;
+    
+    setUpdatingGroups(true);
+    
+    // Delete existing group assignments
+    await supabase
+      .from('user_museum_groups')
+      .delete()
+      .eq('user_id', groupDialogUser.id);
+    
+    // Insert new group assignments
+    if (selectedGroupsForUser.length > 0) {
+      const { error } = await supabase
+        .from('user_museum_groups')
+        .insert(selectedGroupsForUser.map(group_id => ({ 
+          user_id: groupDialogUser.id, 
+          group_id 
+        })));
+
+      if (error) {
+        toast.error('Gruplar atanamadı');
+        setUpdatingGroups(false);
+        return;
+      }
+    }
+
+    setUsers(prev => prev.map(u => 
+      u.id === groupDialogUser.id 
+        ? { ...u, museum_groups: selectedGroupsForUser }
+        : u
+    ));
+    toast.success('Müze grupları güncellendi');
+    setGroupDialogUser(null);
+    setUpdatingGroups(false);
+  };
+
+  const toggleGroupForUser = (groupId: string) => {
+    setSelectedGroupsForUser(prev => 
+      prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
+    );
+  };
+
   const getMuseumName = (museumId: string | null) => {
     if (!museumId) return 'Atanmamış';
     return museums.find(m => m.id === museumId)?.name || 'Bilinmeyen';
+  };
+
+  const getGroupNames = (groupIds: string[]) => {
+    if (!groupIds || groupIds.length === 0) return [];
+    return groupIds.map(id => museumGroups.find(g => g.id === id)?.name).filter(Boolean) as string[];
   };
 
   if (loading) {
@@ -524,6 +602,15 @@ export const UserSettings = () => {
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => openGroupDialog(user)}
+                            className="gap-2"
+                          >
+                            <FolderOpen className="w-4 h-4" />
+                            Gruplar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => openMuseumDialog(user)}
                             className="gap-2"
                           >
@@ -552,9 +639,21 @@ export const UserSettings = () => {
                     </div>
                   </div>
 
+                  {/* Museum Groups display */}
+                  {!isAdmin && user.museum_groups.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {getGroupNames(user.museum_groups).map(name => (
+                        <Badge key={name} variant="secondary" className="text-xs gap-1">
+                          <FolderOpen className="w-3 h-3" />
+                          {name}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Permissions display */}
                   {!isAdmin && user.permissions.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1">
                       {user.permissions.map(p => (
                         <Badge key={p} variant="outline" className="text-xs">
                           {PERMISSION_LABELS[p]}
@@ -673,6 +772,56 @@ export const UserSettings = () => {
             >
               {updatingRole ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Rol Güncelle
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Museum Group Assignment Dialog */}
+      <Dialog open={!!groupDialogUser} onOpenChange={(open) => !open && setGroupDialogUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderOpen className="w-5 h-5" />
+              {groupDialogUser?.full_name} - Müze Grupları
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Atanacak Müze Grupları</Label>
+              {museumGroups.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  Henüz müze grubu oluşturulmamış. Önce Ayarlar → Müze Grupları'ndan grup oluşturun.
+                </p>
+              ) : (
+                <div className="border rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                  {museumGroups.map(group => (
+                    <div 
+                      key={group.id}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
+                      onClick={() => toggleGroupForUser(group.id)}
+                    >
+                      <Checkbox
+                        checked={selectedGroupsForUser.includes(group.id)}
+                        onCheckedChange={() => toggleGroupForUser(group.id)}
+                      />
+                      <FolderOpen className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm">{group.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Kullanıcı sadece atandığı gruplardaki müzelerin biletlerini satabilir.
+              </p>
+            </div>
+            <Button 
+              onClick={handleUpdateGroups} 
+              className="w-full gradient-primary border-0"
+              disabled={updatingGroups || museumGroups.length === 0}
+            >
+              {updatingGroups ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Grupları Kaydet
             </Button>
           </div>
         </DialogContent>
