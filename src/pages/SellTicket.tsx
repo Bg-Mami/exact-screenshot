@@ -22,6 +22,11 @@ interface TicketType {
   is_active: boolean;
 }
 
+interface MuseumTicketPrice {
+  ticket_type_id: string;
+  price: number;
+}
+
 interface Museum {
   id: string;
   name: string;
@@ -54,6 +59,7 @@ interface GeneratedTicket {
 
 const SellTicket = () => {
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
+  const [displayTicketTypes, setDisplayTicketTypes] = useState<TicketType[]>([]);
   const [museums, setMuseums] = useState<Museum[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedMuseum, setSelectedMuseum] = useState<string>('');
@@ -72,11 +78,13 @@ const SellTicket = () => {
   useEffect(() => {
     if (selectedMuseum) {
       fetchSessions(selectedMuseum);
+      fetchMuseumPrices(selectedMuseum);
     } else {
       setSessions([]);
       setSelectedSession('');
+      setDisplayTicketTypes(ticketTypes);
     }
-  }, [selectedMuseum]);
+  }, [selectedMuseum, ticketTypes]);
 
   const fetchData = async () => {
     const [typesRes, museumsRes] = await Promise.all([
@@ -87,7 +95,9 @@ const SellTicket = () => {
     if (typesRes.error) toast.error('Bilet türleri yüklenemedi');
     if (museumsRes.error) toast.error('Müzeler yüklenemedi');
 
-    setTicketTypes(typesRes.data || []);
+    const types = typesRes.data || [];
+    setTicketTypes(types);
+    setDisplayTicketTypes(types);
     setMuseums(museumsRes.data || []);
     
     // Auto-select first museum if only one
@@ -114,6 +124,34 @@ const SellTicket = () => {
     } else {
       setSessions(data || []);
     }
+  };
+
+  const fetchMuseumPrices = async (museumId: string) => {
+    const { data, error } = await supabase
+      .from('museum_ticket_prices')
+      .select('ticket_type_id, price')
+      .eq('museum_id', museumId)
+      .eq('is_active', true);
+
+    if (error) {
+      toast.error('Müze fiyatları yüklenemedi');
+      setDisplayTicketTypes(ticketTypes);
+      return;
+    }
+
+    // Create a price map from museum-specific prices
+    const priceMap = new Map<string, number>();
+    (data || []).forEach((item: MuseumTicketPrice) => {
+      priceMap.set(item.ticket_type_id, item.price);
+    });
+
+    // Update ticket types with museum-specific prices
+    const updatedTypes = ticketTypes.map(type => ({
+      ...type,
+      price: priceMap.has(type.id) ? priceMap.get(type.id)! : type.price
+    }));
+
+    setDisplayTicketTypes(updatedTypes);
   };
 
   const addToCart = (ticketTypeId: string) => {
@@ -190,7 +228,7 @@ const SellTicket = () => {
 
     try {
       for (const item of cart) {
-        const ticketType = ticketTypes.find(t => t.id === item.ticketTypeId)!;
+        const ticketType = displayTicketTypes.find(t => t.id === item.ticketTypeId)!;
         
         for (let i = 0; i < item.quantity; i++) {
           const qrCode = generateQRCode();
@@ -242,7 +280,7 @@ const SellTicket = () => {
     setCurrentTicketIndex(0);
   };
 
-  const getTicketTypeById = (id: string) => ticketTypes.find(t => t.id === id);
+  const getTicketTypeById = (id: string) => displayTicketTypes.find(t => t.id === id);
 
   const totalTickets = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => {
@@ -421,7 +459,7 @@ const SellTicket = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {ticketTypes.map((type, index) => {
+                {displayTicketTypes.map((type, index) => {
                   const cartItem = cart.find(item => item.ticketTypeId === type.id);
                   return (
                     <div 
