@@ -19,7 +19,7 @@ interface UserProfile {
   id: string;
   username: string;
   full_name: string;
-  is_active: boolean;
+  is_active: boolean | null;
   assigned_museum_id: string | null;
   roles: AppRole[];
   permissions: AppPermission[];
@@ -554,7 +554,7 @@ export const UserSettings = () => {
           {users.map((user) => {
             const isAdmin = user.roles.includes('admin');
             return (
-              <Card key={user.id} className={`border-border ${!user.is_active ? 'opacity-60' : ''}`}>
+              <Card key={user.id} className={`border-border ${user.is_active === false ? 'opacity-60' : ''}`}>
                 <CardContent className="pt-6">
                   <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -579,11 +579,11 @@ export const UserSettings = () => {
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-2">
                         <Switch
-                          checked={user.is_active}
+                          checked={user.is_active !== false}
                           onCheckedChange={(checked) => handleToggleActive(user.id, checked)}
                         />
                         <span className="text-sm text-muted-foreground">
-                          {user.is_active ? 'Aktif' : 'Pasif'}
+                          {user.is_active !== false ? 'Aktif' : 'Pasif'}
                         </span>
                       </div>
 
