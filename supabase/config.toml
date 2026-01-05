@@ -11,3 +11,12 @@ verify_jwt = false
 
 [functions.validate-ticket-api]
 verify_jwt = false
+
+[functions.create-user]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.cleanup-orphan-users]
+verify_jwt = false
