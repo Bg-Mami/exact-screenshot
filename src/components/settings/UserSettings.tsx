@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, Trash2, Shield, Key, Building2 } from 'lucide-react';
+import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog } from 'lucide-react';
 
 type AppRole = 'admin' | 'cashier';
 type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings';
@@ -57,6 +57,8 @@ export const UserSettings = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [permDialogUser, setPermDialogUser] = useState<UserProfile | null>(null);
   const [museumDialogUser, setMuseumDialogUser] = useState<UserProfile | null>(null);
+  const [roleDialogUser, setRoleDialogUser] = useState<UserProfile | null>(null);
+  const [selectedRoleForUser, setSelectedRoleForUser] = useState<AppRole>('cashier');
   const [selectedMuseumForUser, setSelectedMuseumForUser] = useState<string>('');
   const [newUser, setNewUser] = useState({
     email: '',
@@ -68,6 +70,7 @@ export const UserSettings = () => {
   });
   const [creating, setCreating] = useState(false);
   const [updatingMuseum, setUpdatingMuseum] = useState(false);
+  const [updatingRole, setUpdatingRole] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -279,6 +282,42 @@ export const UserSettings = () => {
     setSelectedMuseumForUser(user.assigned_museum_id || '');
   };
 
+  const openRoleDialog = (user: UserProfile) => {
+    setRoleDialogUser(user);
+    setSelectedRoleForUser(user.roles[0] || 'cashier');
+  };
+
+  const handleUpdateRole = async () => {
+    if (!roleDialogUser) return;
+    
+    setUpdatingRole(true);
+    
+    // Delete existing roles
+    await supabase
+      .from('user_roles')
+      .delete()
+      .eq('user_id', roleDialogUser.id);
+    
+    // Insert new role
+    const { error } = await supabase
+      .from('user_roles')
+      .insert({ user_id: roleDialogUser.id, role: selectedRoleForUser });
+
+    if (error) {
+      toast.error('Rol güncellenemedi');
+    } else {
+      setUsers(prev => prev.map(u => 
+        u.id === roleDialogUser.id 
+          ? { ...u, roles: [selectedRoleForUser] }
+          : u
+      ));
+      toast.success('Rol güncellendi');
+      setRoleDialogUser(null);
+    }
+    
+    setUpdatingRole(false);
+  };
+
   const getMuseumName = (museumId: string | null) => {
     if (!museumId) return 'Atanmamış';
     return museums.find(m => m.id === museumId)?.name || 'Bilinmeyen';
@@ -437,6 +476,16 @@ export const UserSettings = () => {
                         </span>
                       </div>
 
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openRoleDialog(user)}
+                        className="gap-2"
+                      >
+                        <UserCog className="w-4 h-4" />
+                        Rol
+                      </Button>
+
                       {!isAdmin && (
                         <>
                           <Button
@@ -551,6 +600,46 @@ export const UserSettings = () => {
             >
               {updatingMuseum ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Müze Ata
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Role Assignment Dialog */}
+      <Dialog open={!!roleDialogUser} onOpenChange={(open) => !open && setRoleDialogUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCog className="w-5 h-5" />
+              {roleDialogUser?.full_name} - Rol Değiştir
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Kullanıcı Rolü</Label>
+              <Select 
+                value={selectedRoleForUser} 
+                onValueChange={(v: AppRole) => setSelectedRoleForUser(v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Yönetici (Admin)</SelectItem>
+                  <SelectItem value="cashier">Gişe Personeli</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Admin kullanıcılar tüm yetkilere sahiptir. Gişe personeli sadece atanan yetkileri kullanabilir.
+              </p>
+            </div>
+            <Button 
+              onClick={handleUpdateRole} 
+              className="w-full gradient-primary border-0"
+              disabled={updatingRole}
+            >
+              {updatingRole ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Rol Güncelle
             </Button>
           </div>
         </DialogContent>
