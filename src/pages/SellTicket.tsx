@@ -71,9 +71,11 @@ const SellTicket = () => {
   const [selling, setSelling] = useState(false);
   const { user, profile } = useAuth();
 
+  const isAdmin = profile?.id ? true : false; // Will be updated with role check
+
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [profile]);
 
   useEffect(() => {
     if (selectedMuseum) {
@@ -87,9 +89,10 @@ const SellTicket = () => {
   }, [selectedMuseum, ticketTypes]);
 
   const fetchData = async () => {
-    const [typesRes, museumsRes] = await Promise.all([
+    const [typesRes, museumsRes, rolesRes] = await Promise.all([
       supabase.from('ticket_types').select('*').eq('is_active', true).order('created_at'),
       supabase.from('museums').select('*').eq('is_active', true).order('name'),
+      user ? supabase.from('user_roles').select('role').eq('user_id', user.id) : Promise.resolve({ data: [] }),
     ]);
 
     if (typesRes.error) toast.error('Bilet türleri yüklenemedi');
@@ -98,11 +101,25 @@ const SellTicket = () => {
     const types = typesRes.data || [];
     setTicketTypes(types);
     setDisplayTicketTypes(types);
-    setMuseums(museumsRes.data || []);
-    
-    // Auto-select first museum if only one
-    if (museumsRes.data?.length === 1) {
-      setSelectedMuseum(museumsRes.data[0].id);
+
+    const allMuseums = museumsRes.data || [];
+    const userRoles = rolesRes.data || [];
+    const userIsAdmin = userRoles.some(r => r.role === 'admin');
+
+    // If user is not admin, only show their assigned museum
+    if (!userIsAdmin && profile?.assigned_museum_id) {
+      const assignedMuseum = allMuseums.filter(m => m.id === profile.assigned_museum_id);
+      setMuseums(assignedMuseum);
+      // Auto-select the assigned museum
+      if (assignedMuseum.length === 1) {
+        setSelectedMuseum(assignedMuseum[0].id);
+      }
+    } else {
+      setMuseums(allMuseums);
+      // Auto-select first museum if only one
+      if (allMuseums.length === 1) {
+        setSelectedMuseum(allMuseums[0].id);
+      }
     }
     
     setLoading(false);
@@ -429,18 +446,24 @@ const SellTicket = () => {
             </div>
 
             {/* Session Capacity Warning */}
-            {selectedSession && (() => {
+            {selectedSession && selectedSession !== 'none' && (() => {
               const session = sessions.find(s => s.id === selectedSession);
               if (session) {
                 const remaining = session.capacity - session.sold_count;
                 const percent = (session.sold_count / session.capacity) * 100;
-                if (percent >= 80) {
+                // Show warning when 3 or fewer spots remain or capacity is 80%+ filled
+                if (remaining <= 3 || percent >= 80) {
+                  const isAlmostFull = remaining <= 3;
                   return (
-                    <div className="bg-warning/10 border border-warning rounded-xl p-4 flex items-center gap-3 animate-fade-in">
-                      <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+                    <div className={`${isAlmostFull ? 'bg-destructive/10 border-destructive' : 'bg-warning/10 border-warning'} border rounded-xl p-4 flex items-center gap-3 animate-fade-in`}>
+                      <AlertTriangle className={`w-5 h-5 ${isAlmostFull ? 'text-destructive' : 'text-warning'} shrink-0`} />
                       <div className="flex-1">
-                        <p className="font-medium text-warning">
-                          Bu seansta sadece {remaining} kişilik yer kaldı!
+                        <p className={`font-medium ${isAlmostFull ? 'text-destructive' : 'text-warning'}`}>
+                          {remaining === 0 
+                            ? 'Bu seans tamamen doldu!' 
+                            : remaining === 1 
+                              ? '⚠️ Son 1 kişilik yer kaldı!'
+                              : `⚠️ Sadece ${remaining} kişilik yer kaldı!`}
                         </p>
                         <Progress value={percent} className="h-2 mt-2" />
                       </div>
