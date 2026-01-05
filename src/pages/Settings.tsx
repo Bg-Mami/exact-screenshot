@@ -6,7 +6,8 @@ import { TicketTypesSettings } from '@/components/settings/TicketTypesSettings';
 import { MuseumSettings } from '@/components/settings/MuseumSettings';
 import { SessionSettings } from '@/components/settings/SessionSettings';
 import { UserSettings } from '@/components/settings/UserSettings';
-import { Ticket, Building2, Clock, Users, ShieldAlert } from 'lucide-react';
+import { StaffRotationSettings } from '@/components/settings/StaffRotationSettings';
+import { Ticket, Building2, Clock, Users, CalendarDays } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 const Settings = () => {
@@ -38,7 +39,7 @@ const Settings = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="animate-slide-up">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 h-auto gap-2 bg-transparent p-0">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 h-auto gap-2 bg-transparent p-0">
             <TabsTrigger 
               value="ticket-types"
               className="data-[state=active]:gradient-primary data-[state=active]:text-primary-foreground gap-2 py-3"
@@ -71,6 +72,14 @@ const Settings = () => {
               <span className="hidden sm:inline">Kullanıcılar</span>
               <span className="sm:hidden">Kullanıcı</span>
             </TabsTrigger>
+            <TabsTrigger 
+              value="rotations"
+              className="data-[state=active]:gradient-primary data-[state=active]:text-primary-foreground gap-2 py-3"
+            >
+              <CalendarDays className="w-4 h-4" />
+              <span className="hidden sm:inline">Rotasyon</span>
+              <span className="sm:hidden">Rotasyon</span>
+            </TabsTrigger>
           </TabsList>
 
           <div className="mt-6">
@@ -85,6 +94,9 @@ const Settings = () => {
             </TabsContent>
             <TabsContent value="users" className="mt-0">
               <UserSettings />
+            </TabsContent>
+            <TabsContent value="rotations" className="mt-0">
+              <StaffRotationSettings />
             </TabsContent>
           </div>
         </Tabs>
