@@ -24,21 +24,18 @@ const Auth = () => {
   const [adminFullName, setAdminFullName] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
 
-  // Check if admin exists
+  // Check if admin exists via edge function (bypasses RLS)
   useEffect(() => {
     const checkAdmin = async () => {
       try {
-        const { data, error } = await supabase
-          .from('user_roles')
-          .select('id')
-          .eq('role', 'admin')
-          .limit(1);
+        const { data, error } = await supabase.functions.invoke('check-admin-exists');
         
         if (error) throw error;
-        setHasAdmin(data && data.length > 0);
+        setHasAdmin(data?.exists ?? false);
       } catch (error) {
         console.error('Error checking admin:', error);
-        setHasAdmin(false);
+        // If check fails, assume admin exists and show login form
+        setHasAdmin(true);
       } finally {
         setCheckingAdmin(false);
       }
