@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -34,15 +34,12 @@ interface GroupMember {
 
 export const MuseumGroupSettings = () => {
   const queryClient = useQueryClient();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<MuseumGroup | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    selectedMuseums: [] as string[]
-  });
+  const [formName, setFormName] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [selectedMuseums, setSelectedMuseums] = useState<string[]>([]);
 
-  // Fetch museum groups
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
     queryKey: ['museum-groups'],
     queryFn: async () => {
@@ -55,7 +52,6 @@ export const MuseumGroupSettings = () => {
     }
   });
 
-  // Fetch all museums
   const { data: museums = [] } = useQuery({
     queryKey: ['museums'],
     queryFn: async () => {
@@ -69,7 +65,6 @@ export const MuseumGroupSettings = () => {
     }
   });
 
-  // Fetch group members
   const { data: groupMembers = [] } = useQuery({
     queryKey: ['museum-group-members'],
     queryFn: async () => {
@@ -81,51 +76,35 @@ export const MuseumGroupSettings = () => {
     }
   });
 
-  // Create/Update mutation
   const saveMutation = useMutation({
-    mutationFn: async (formDataToSave: { name: string; description: string; selectedMuseums: string[]; id?: string }) => {
-      if (formDataToSave.id) {
-        // Update group
+    mutationFn: async (params: { name: string; description: string; museums: string[]; id?: string }) => {
+      if (params.id) {
         const { error: updateError } = await supabase
           .from('museum_groups')
-          .update({ name: formDataToSave.name, description: formDataToSave.description || null })
-          .eq('id', formDataToSave.id);
+          .update({ name: params.name, description: params.description || null })
+          .eq('id', params.id);
         if (updateError) throw updateError;
 
-        // Delete existing members
-        const { error: deleteError } = await supabase
-          .from('museum_group_members')
-          .delete()
-          .eq('group_id', formDataToSave.id);
-        if (deleteError) throw deleteError;
+        await supabase.from('museum_group_members').delete().eq('group_id', params.id);
 
-        // Add new members
-        if (formDataToSave.selectedMuseums.length > 0) {
+        if (params.museums.length > 0) {
           const { error: insertError } = await supabase
             .from('museum_group_members')
-            .insert(formDataToSave.selectedMuseums.map(museumId => ({
-              group_id: formDataToSave.id!,
-              museum_id: museumId
-            })));
+            .insert(params.museums.map(museumId => ({ group_id: params.id!, museum_id: museumId })));
           if (insertError) throw insertError;
         }
       } else {
-        // Create new group
         const { data: newGroup, error: createError } = await supabase
           .from('museum_groups')
-          .insert({ name: formDataToSave.name, description: formDataToSave.description || null })
+          .insert({ name: params.name, description: params.description || null })
           .select()
           .single();
         if (createError) throw createError;
 
-        // Add members
-        if (formDataToSave.selectedMuseums.length > 0) {
+        if (params.museums.length > 0) {
           const { error: insertError } = await supabase
             .from('museum_group_members')
-            .insert(formDataToSave.selectedMuseums.map(museumId => ({
-              group_id: newGroup.id,
-              museum_id: museumId
-            })));
+            .insert(params.museums.map(museumId => ({ group_id: newGroup.id, museum_id: museumId })));
           if (insertError) throw insertError;
         }
       }
@@ -134,20 +113,16 @@ export const MuseumGroupSettings = () => {
       queryClient.invalidateQueries({ queryKey: ['museum-groups'] });
       queryClient.invalidateQueries({ queryKey: ['museum-group-members'] });
       toast.success(editingGroup ? 'Grup güncellendi' : 'Grup oluşturuldu');
-      handleCloseDialog();
+      closeSheet();
     },
     onError: (error) => {
-      toast.error('Bir hata oluştu: ' + error.message);
+      toast.error('Hata: ' + error.message);
     }
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('museum_groups')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('museum_groups').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -156,17 +131,13 @@ export const MuseumGroupSettings = () => {
       toast.success('Grup silindi');
     },
     onError: (error) => {
-      toast.error('Silme işlemi başarısız: ' + error.message);
+      toast.error('Silme başarısız: ' + error.message);
     }
   });
 
-  // Toggle active status
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      const { error } = await supabase
-        .from('museum_groups')
-        .update({ is_active: isActive })
-        .eq('id', id);
+      const { error } = await supabase.from('museum_groups').update({ is_active: isActive }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -175,57 +146,54 @@ export const MuseumGroupSettings = () => {
     }
   });
 
-  const handleOpenDialog = (group?: MuseumGroup) => {
+  const openSheet = (group?: MuseumGroup) => {
     if (group) {
       setEditingGroup(group);
-      const memberMuseumIds = groupMembers
-        .filter(m => m.group_id === group.id)
-        .map(m => m.museum_id);
-      setFormData({
-        name: group.name,
-        description: group.description || '',
-        selectedMuseums: memberMuseumIds
-      });
+      setFormName(group.name);
+      setFormDescription(group.description || '');
+      const memberIds = groupMembers.filter(m => m.group_id === group.id).map(m => m.museum_id);
+      setSelectedMuseums(memberIds);
     } else {
       setEditingGroup(null);
-      setFormData({ name: '', description: '', selectedMuseums: [] });
+      setFormName('');
+      setFormDescription('');
+      setSelectedMuseums([]);
     }
-    setIsDialogOpen(true);
+    setIsSheetOpen(true);
   };
 
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
+  const closeSheet = () => {
+    setIsSheetOpen(false);
     setEditingGroup(null);
-    setFormData({ name: '', description: '', selectedMuseums: [] });
+    setFormName('');
+    setFormDescription('');
+    setSelectedMuseums([]);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
+    if (!formName.trim()) {
       toast.error('Grup adı gerekli');
       return;
     }
     saveMutation.mutate({
-      name: formData.name,
-      description: formData.description,
-      selectedMuseums: formData.selectedMuseums,
+      name: formName,
+      description: formDescription,
+      museums: selectedMuseums,
       id: editingGroup?.id
     });
   };
 
-  const toggleMuseum = (museumId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      selectedMuseums: prev.selectedMuseums.includes(museumId)
-        ? prev.selectedMuseums.filter(id => id !== museumId)
-        : [...prev.selectedMuseums, museumId]
-    }));
+  const toggleMuseumSelection = (museumId: string) => {
+    setSelectedMuseums(prev => 
+      prev.includes(museumId) 
+        ? prev.filter(id => id !== museumId) 
+        : [...prev, museumId]
+    );
   };
 
   const getGroupMuseums = (groupId: string) => {
-    const memberIds = groupMembers
-      .filter(m => m.group_id === groupId)
-      .map(m => m.museum_id);
+    const memberIds = groupMembers.filter(m => m.group_id === groupId).map(m => m.museum_id);
     return museums.filter(m => memberIds.includes(m.id));
   };
 
@@ -246,38 +214,36 @@ export const MuseumGroupSettings = () => {
             Gişelerin bilet satabileceği müze gruplarını tanımlayın
           </p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="gap-2">
+        <Button onClick={() => openSheet()} className="gap-2">
           <Plus className="w-4 h-4" />
           Yeni Grup
         </Button>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {editingGroup ? 'Grubu Düzenle' : 'Yeni Müze Grubu'}
-            </DialogTitle>
-            <DialogDescription>
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>{editingGroup ? 'Grubu Düzenle' : 'Yeni Müze Grubu'}</SheetTitle>
+            <SheetDescription>
               Müze grubu bilgilerini girin ve dahil edilecek müzeleri seçin.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+            </SheetDescription>
+          </SheetHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 mt-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Grup Adı</Label>
+              <Label htmlFor="groupName">Grup Adı</Label>
               <Input
-                id="name"
-                value={formData.name}
-                onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                id="groupName"
+                value={formName}
+                onChange={e => setFormName(e.target.value)}
                 placeholder="Örn: Gişe 1 Müzeleri"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Açıklama (Opsiyonel)</Label>
+              <Label htmlFor="groupDesc">Açıklama (Opsiyonel)</Label>
               <Textarea
-                id="description"
-                value={formData.description}
-                onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                id="groupDesc"
+                value={formDescription}
+                onChange={e => setFormDescription(e.target.value)}
                 placeholder="Grup açıklaması..."
                 rows={2}
               />
@@ -294,11 +260,11 @@ export const MuseumGroupSettings = () => {
                     <div 
                       key={museum.id}
                       className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer"
-                      onClick={() => toggleMuseum(museum.id)}
+                      onClick={() => toggleMuseumSelection(museum.id)}
                     >
                       <Checkbox
-                        checked={formData.selectedMuseums.includes(museum.id)}
-                        onCheckedChange={() => toggleMuseum(museum.id)}
+                        checked={selectedMuseums.includes(museum.id)}
+                        onCheckedChange={() => toggleMuseumSelection(museum.id)}
                       />
                       <Building2 className="w-4 h-4 text-muted-foreground" />
                       <span className="text-sm">{museum.name}</span>
@@ -307,11 +273,11 @@ export const MuseumGroupSettings = () => {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                {formData.selectedMuseums.length} müze seçildi
+                {selectedMuseums.length} müze seçildi
               </p>
             </div>
             <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+              <Button type="button" variant="outline" onClick={closeSheet}>
                 İptal
               </Button>
               <Button type="submit" disabled={saveMutation.isPending}>
@@ -319,8 +285,8 @@ export const MuseumGroupSettings = () => {
               </Button>
             </div>
           </form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       {groups.length === 0 ? (
         <Card>
@@ -336,8 +302,9 @@ export const MuseumGroupSettings = () => {
         <div className="grid gap-4">
           {groups.map(group => {
             const groupMuseums = getGroupMuseums(group.id);
+            const isActive = group.is_active !== false;
             return (
-              <Card key={group.id} className={cn(group.is_active === false && 'opacity-60')}>
+              <Card key={group.id} className={cn(!isActive && 'opacity-60')}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -347,14 +314,10 @@ export const MuseumGroupSettings = () => {
                       <div>
                         <CardTitle className="text-base flex items-center gap-2">
                           {group.name}
-                          {group.is_active === false && (
-                            <Badge variant="secondary">Pasif</Badge>
-                          )}
+                          {!isActive && <Badge variant="secondary">Pasif</Badge>}
                         </CardTitle>
                         {group.description && (
-                          <p className="text-sm text-muted-foreground">
-                            {group.description}
-                          </p>
+                          <p className="text-sm text-muted-foreground">{group.description}</p>
                         )}
                       </div>
                     </div>
@@ -362,22 +325,12 @@ export const MuseumGroupSettings = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => toggleActiveMutation.mutate({ 
-                          id: group.id, 
-                          isActive: group.is_active === false 
-                        })}
-                        title={group.is_active !== false ? 'Pasif Yap' : 'Aktif Yap'}
+                        onClick={() => toggleActiveMutation.mutate({ id: group.id, isActive: !isActive })}
+                        title={isActive ? 'Pasif Yap' : 'Aktif Yap'}
                       >
-                        <div className={cn(
-                          "w-2 h-2 rounded-full",
-                          group.is_active !== false ? "bg-green-500" : "bg-gray-400"
-                        )} />
+                        <div className={cn("w-2 h-2 rounded-full", isActive ? "bg-green-500" : "bg-gray-400")} />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenDialog(group)}
-                      >
+                      <Button variant="ghost" size="icon" onClick={() => openSheet(group)}>
                         <Pencil className="w-4 h-4" />
                       </Button>
                       <Button
@@ -397,9 +350,7 @@ export const MuseumGroupSettings = () => {
                 <CardContent className="pt-0">
                   <div className="flex flex-wrap gap-2">
                     {groupMuseums.length === 0 ? (
-                      <span className="text-sm text-muted-foreground">
-                        Henüz müze eklenmemiş
-                      </span>
+                      <span className="text-sm text-muted-foreground">Henüz müze eklenmemiş</span>
                     ) : (
                       groupMuseums.map(museum => (
                         <Badge key={museum.id} variant="outline" className="gap-1">
