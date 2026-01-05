@@ -81,7 +81,7 @@ export const UserSettings = () => {
     username: '',
     full_name: '',
     role: 'cashier' as AppRole,
-    museum_id: '',
+    museum_ids: [] as string[],
     permissions: ['sell_tickets', 'view_reports'] as AppPermission[],
     museum_groups: [] as string[],
   });
@@ -177,7 +177,7 @@ export const UserSettings = () => {
           role: newUser.role,
           permissions: newUser.permissions,
           museum_groups: newUser.museum_groups,
-          museum_id: newUser.museum_id,
+          museum_ids: newUser.museum_ids,
         },
       });
 
@@ -195,7 +195,7 @@ export const UserSettings = () => {
 
       toast.success('Kullanıcı oluşturuldu');
       setDialogOpen(false);
-      setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_id: '', permissions: ['sell_tickets', 'view_reports'], museum_groups: [] });
+      setNewUser({ password: '', username: '', full_name: '', role: 'cashier', museum_ids: [], permissions: ['sell_tickets', 'view_reports'], museum_groups: [] });
       fetchData();
     } catch (err) {
       toast.error('Kullanıcı oluşturma başarısız');
@@ -695,20 +695,30 @@ export const UserSettings = () => {
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Atanacak Müze</Label>
-                <Select 
-                  value={newUser.museum_id} 
-                  onValueChange={(v) => setNewUser({ ...newUser, museum_id: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seçiniz (opsiyonel)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {museums.map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Atanacak Müzeler (Birden fazla seçebilirsiniz)</Label>
+                <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-2">
+                  {museums.map(m => (
+                    <div key={m.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`new-museum-${m.id}`}
+                        checked={newUser.museum_ids.includes(m.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setNewUser(prev => ({ ...prev, museum_ids: [...prev.museum_ids, m.id] }));
+                          } else {
+                            setNewUser(prev => ({ ...prev, museum_ids: prev.museum_ids.filter(id => id !== m.id) }));
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`new-museum-${m.id}`} className="cursor-pointer text-sm">
+                        {m.name}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Seçili: {newUser.museum_ids.length} müze
+                </p>
               </div>
               <Button 
                 onClick={handleCreateUser} 

@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { email, password, username, full_name, role, permissions, museum_groups, museum_id } = await req.json();
+    const { email, password, username, full_name, role, permissions, museum_groups, museum_ids } = await req.json();
 
     if (!email || !password || !username || !full_name) {
       return new Response(JSON.stringify({ error: 'Tüm alanlar gerekli' }), {
@@ -95,7 +95,6 @@ Deno.serve(async (req) => {
       .update({
         username,
         full_name,
-        assigned_museum_id: museum_id || null,
       })
       .eq('id', userId);
 
@@ -130,6 +129,13 @@ Deno.serve(async (req) => {
     if (museum_groups && museum_groups.length > 0) {
       await supabaseAdmin.from('user_museum_groups').insert(
         museum_groups.map((group_id: string) => ({ user_id: userId, group_id }))
+      );
+    }
+
+    // Assign direct museum assignments
+    if (museum_ids && museum_ids.length > 0) {
+      await supabaseAdmin.from('user_museums').insert(
+        museum_ids.map((museum_id: string) => ({ user_id: userId, museum_id }))
       );
     }
 
