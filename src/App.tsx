@@ -10,6 +10,7 @@ import SellTicket from "./pages/SellTicket";
 import ValidateTicket from "./pages/ValidateTicket";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import GateControl from "./pages/GateControl";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -42,6 +43,7 @@ const AppRoutes = () => {
       <Route path="/validate" element={<ProtectedRoute><ValidateTicket /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/gate" element={<ProtectedRoute><GateControl /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

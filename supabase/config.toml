@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.check-admin-exists]
 verify_jwt = false
+
+[functions.validate-ticket-api]
+verify_jwt = false
