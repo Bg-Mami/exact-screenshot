@@ -225,6 +225,54 @@ export type Database = {
           },
         ]
       }
+      staff_rotations: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_manual_override: boolean | null
+          museum_id: string
+          rotation_month: string
+          rotation_order: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_manual_override?: boolean | null
+          museum_id: string
+          rotation_month: string
+          rotation_order?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_manual_override?: boolean | null
+          museum_id?: string
+          rotation_month?: string
+          rotation_order?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_rotations_museum_id_fkey"
+            columns: ["museum_id"]
+            isOneToOne: false
+            referencedRelation: "museums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_rotations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ticket_types: {
         Row: {
           color: string
