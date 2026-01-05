@@ -3,10 +3,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Loader2, Calendar, Download, RefreshCw, ArrowRight, Edit2, Building2 } from 'lucide-react';
+import { Loader2, Calendar, Download, RefreshCw, ArrowRight, Edit2, Building2, Settings2, Users } from 'lucide-react';
 import { format, startOfMonth, addMonths } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -34,6 +37,12 @@ interface StaffRotation {
   is_manual_override: boolean;
 }
 
+interface MuseumStaffConfig {
+  museumId: string;
+  staffCount: number;
+  selected: boolean;
+}
+
 export const StaffRotationSettings = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [museums, setMuseums] = useState<Museum[]>([]);
@@ -46,6 +55,10 @@ export const StaffRotationSettings = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRotation, setEditingRotation] = useState<StaffRotation | null>(null);
   const [selectedMuseumForEdit, setSelectedMuseumForEdit] = useState('');
+  
+  // Müze seçimi ve personel sayısı konfigürasyonu
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [museumConfigs, setMuseumConfigs] = useState<MuseumStaffConfig[]>([]);
 
   // Generate month options (current + next 6 months)
   const monthOptions = Array.from({ length: 7 }, (_, i) => {
@@ -86,13 +99,46 @@ export const StaffRotationSettings = () => {
     setLoading(false);
   };
 
+  // Konfigürasyon dialog'unu aç
+  const openConfigDialog = () => {
+    // Mevcut müzeleri config'e dönüştür
+    const configs = museums.map(m => ({
+      museumId: m.id,
+      staffCount: 1,
+      selected: true
+    }));
+    setMuseumConfigs(configs);
+    setConfigDialogOpen(true);
+  };
+
+  const toggleMuseumSelection = (museumId: string) => {
+    setMuseumConfigs(prev => prev.map(c => 
+      c.museumId === museumId ? { ...c, selected: !c.selected } : c
+    ));
+  };
+
+  const updateStaffCount = (museumId: string, count: number) => {
+    setMuseumConfigs(prev => prev.map(c => 
+      c.museumId === museumId ? { ...c, staffCount: Math.max(1, Math.min(10, count)) } : c
+    ));
+  };
+
   const generateRotations = async () => {
-    if (users.length === 0 || museums.length === 0) {
-      toast.error('Personel veya müze bulunamadı');
+    const selectedMuseums = museumConfigs.filter(c => c.selected);
+    
+    if (selectedMuseums.length === 0) {
+      toast.error('En az bir müze seçmelisiniz');
       return;
     }
 
+    const totalSlots = selectedMuseums.reduce((sum, c) => sum + c.staffCount, 0);
+    
+    if (users.length < totalSlots) {
+      toast.warning(`Toplam ${totalSlots} personel gerekli, ancak ${users.length} aktif personel mevcut`);
+    }
+
     setGenerating(true);
+    setConfigDialogOpen(false);
 
     // Get previous month's rotations for sequential assignment
     const prevMonth = format(startOfMonth(addMonths(new Date(selectedMonth), -1)), 'yyyy-MM-dd');
@@ -101,26 +147,53 @@ export const StaffRotationSettings = () => {
       .select('*')
       .eq('rotation_month', prevMonth);
 
+    // Müzeleri slot sayısına göre genişlet
+    const expandedMuseumSlots: { museumId: string; slotIndex: number }[] = [];
+    selectedMuseums.forEach(config => {
+      for (let i = 0; i < config.staffCount; i++) {
+        expandedMuseumSlots.push({ museumId: config.museumId, slotIndex: i });
+      }
+    });
+
     // Build rotation order based on previous assignments
     const newRotations: { user_id: string; museum_id: string; rotation_order: number }[] = [];
     
-    users.forEach((user, index) => {
+    // Önceki atamalara göre sıralama
+    const usersWithPrevIndex = users.map(user => {
       const prevRotation = prevRotations?.find(r => r.user_id === user.id);
-      let nextMuseumIndex = 0;
-
+      let prevSlotIndex = -1;
+      
       if (prevRotation) {
-        const prevMuseumIndex = museums.findIndex(m => m.id === prevRotation.museum_id);
-        nextMuseumIndex = (prevMuseumIndex + 1) % museums.length;
+        // Önceki müzenin bu ayki slot listesindeki pozisyonunu bul
+        const prevMuseumConfig = selectedMuseums.find(c => c.museumId === prevRotation.museum_id);
+        if (prevMuseumConfig) {
+          const prevMuseumFirstSlot = expandedMuseumSlots.findIndex(s => s.museumId === prevRotation.museum_id);
+          prevSlotIndex = prevMuseumFirstSlot;
+        }
+      }
+      
+      return { user, prevSlotIndex };
+    });
+
+    // Personelleri sırayla müzelere ata
+    usersWithPrevIndex.forEach((item, userIndex) => {
+      let nextSlotIndex = 0;
+      
+      if (item.prevSlotIndex >= 0) {
+        // Bir sonraki slot'a geç
+        nextSlotIndex = (item.prevSlotIndex + 1) % expandedMuseumSlots.length;
       } else {
-        // First time assignment - distribute evenly
-        nextMuseumIndex = index % museums.length;
+        // İlk atama - sırayla dağıt
+        nextSlotIndex = userIndex % expandedMuseumSlots.length;
       }
 
-      newRotations.push({
-        user_id: user.id,
-        museum_id: museums[nextMuseumIndex].id,
-        rotation_order: index,
-      });
+      if (nextSlotIndex < expandedMuseumSlots.length) {
+        newRotations.push({
+          user_id: item.user.id,
+          museum_id: expandedMuseumSlots[nextSlotIndex].museumId,
+          rotation_order: userIndex,
+        });
+      }
     });
 
     // Delete existing rotations for this month (only non-manual ones)
@@ -281,11 +354,11 @@ export const StaffRotationSettings = () => {
 
           <Button
             variant="outline"
-            onClick={generateRotations}
-            disabled={generating}
+            onClick={openConfigDialog}
+            disabled={generating || users.length === 0 || museums.length === 0}
             className="gap-2"
           >
-            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings2 className="w-4 h-4" />}
             Rotasyon Oluştur
           </Button>
 
@@ -311,13 +384,52 @@ export const StaffRotationSettings = () => {
         </div>
       </div>
 
+      {/* Stats Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              <span className="text-sm text-muted-foreground">Aktif Personel</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{users.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-primary" />
+              <span className="text-sm text-muted-foreground">Aktif Müze</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{museums.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-primary" />
+              <span className="text-sm text-muted-foreground">Bu Ay Atama</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{rotations.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Edit2 className="w-4 h-4 text-orange-500" />
+              <span className="text-sm text-muted-foreground">Manuel Değişiklik</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{rotations.filter(r => r.is_manual_override).length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Info Card */}
       <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/20">
         <CardContent className="py-4">
           <p className="text-sm text-muted-foreground">
-            <strong>Sıralı Döngü:</strong> Her personel ayın 1'inde bir sonraki müzeye geçer. 
-            "Rotasyon Oluştur" ile otomatik atama yapabilir, sonra "Atamaları Uygula" ile profillere uygulayabilirsiniz.
-            İstisna durumlar için herhangi bir atamayı manuel düzenleyebilirsiniz.
+            <strong>Rotasyon Oluştur:</strong> Rotasyon oluşturmadan önce hangi müzeler arasında yapılacağını ve her müzede kaç personel olacağını seçebilirsiniz.
+            Personeller otomatik olarak seçilen müzelere dağıtılır. İstisna durumlar için herhangi bir atamayı manuel düzenleyebilirsiniz.
           </p>
         </CardContent>
       </Card>
@@ -329,11 +441,11 @@ export const StaffRotationSettings = () => {
             <Calendar className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground">Bu ay için rotasyon tanımlanmamış</p>
             <Button 
-              onClick={generateRotations} 
+              onClick={openConfigDialog} 
               className="mt-4 gap-2"
-              disabled={generating}
+              disabled={generating || users.length === 0 || museums.length === 0}
             >
-              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              <Settings2 className="w-4 h-4" />
               Rotasyon Oluştur
             </Button>
           </CardContent>
@@ -375,6 +487,128 @@ export const StaffRotationSettings = () => {
           ))}
         </div>
       )}
+
+      {/* Config Dialog - Müze Seçimi ve Personel Sayısı */}
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="w-5 h-5 text-primary" />
+              Rotasyon Ayarları
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Rotasyona dahil edilecek müzeleri seçin ve her müzede kaç personel olacağını belirleyin.
+            </p>
+            
+            <div className="text-sm text-muted-foreground flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                <span>Toplam Personel: <strong>{users.length}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4" />
+                <span>Seçili Slot: <strong>{museumConfigs.filter(c => c.selected).reduce((sum, c) => sum + c.staffCount, 0)}</strong></span>
+              </div>
+            </div>
+
+            <div className="max-h-[300px] overflow-y-auto space-y-3">
+              {museumConfigs.map(config => {
+                const museum = museums.find(m => m.id === config.museumId);
+                return (
+                  <div 
+                    key={config.museumId}
+                    className={`p-3 border rounded-lg transition-colors ${
+                      config.selected 
+                        ? 'border-primary bg-primary/5' 
+                        : 'border-border bg-muted/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id={config.museumId}
+                          checked={config.selected}
+                          onCheckedChange={() => toggleMuseumSelection(config.museumId)}
+                        />
+                        <Label 
+                          htmlFor={config.museumId}
+                          className={`cursor-pointer ${!config.selected && 'text-muted-foreground'}`}
+                        >
+                          {museum?.name || 'Bilinmeyen'}
+                        </Label>
+                      </div>
+                      
+                      {config.selected && (
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs text-muted-foreground">Personel:</Label>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              onClick={() => updateStaffCount(config.museumId, config.staffCount - 1)}
+                              disabled={config.staffCount <= 1}
+                            >
+                              -
+                            </Button>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={config.staffCount}
+                              onChange={(e) => updateStaffCount(config.museumId, parseInt(e.target.value) || 1)}
+                              className="w-12 h-7 text-center p-0"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              onClick={() => updateStaffCount(config.museumId, config.staffCount + 1)}
+                              disabled={config.staffCount >= 10}
+                            >
+                              +
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {users.length < museumConfigs.filter(c => c.selected).reduce((sum, c) => sum + c.staffCount, 0) && (
+              <div className="text-sm text-orange-600 dark:text-orange-400 p-2 bg-orange-50 dark:bg-orange-950/30 rounded border border-orange-200 dark:border-orange-900">
+                ⚠️ Toplam slot sayısı ({museumConfigs.filter(c => c.selected).reduce((sum, c) => sum + c.staffCount, 0)}) 
+                mevcut personel sayısından ({users.length}) fazla. Bazı slotlar boş kalacak.
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setConfigDialogOpen(false)}
+                className="flex-1"
+              >
+                İptal
+              </Button>
+              <Button 
+                onClick={generateRotations}
+                disabled={generating || museumConfigs.filter(c => c.selected).length === 0}
+                className="flex-1 gradient-primary border-0 gap-2"
+              >
+                {generating && <Loader2 className="w-4 h-4 animate-spin" />}
+                Rotasyon Oluştur
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
