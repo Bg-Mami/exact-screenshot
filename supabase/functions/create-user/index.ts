@@ -87,19 +87,23 @@ Deno.serve(async (req) => {
     const userId = newUser.user.id;
     console.log('User created:', userId);
 
-    // Create profile
-    const { error: profileError } = await supabaseAdmin.from('profiles').insert({
-      id: userId,
-      username,
-      full_name,
-      assigned_museum_id: museum_id || null,
-    });
+    // Wait a bit for the trigger to create profile
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Update profile (trigger already created it via handle_new_user)
+    const { error: profileError } = await supabaseAdmin.from('profiles')
+      .update({
+        username,
+        full_name,
+        assigned_museum_id: museum_id || null,
+      })
+      .eq('id', userId);
 
     if (profileError) {
       console.error('Profile error:', profileError);
       // Rollback: delete the auth user
       await supabaseAdmin.auth.admin.deleteUser(userId);
-      return new Response(JSON.stringify({ error: 'Profil oluşturulamadı: ' + profileError.message }), {
+      return new Response(JSON.stringify({ error: 'Profil güncellenemedi: ' + profileError.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
