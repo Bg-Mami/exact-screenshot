@@ -263,27 +263,40 @@ export const StaffRotationSettings = () => {
     }
   };
 
+  // Türkçe karakterleri ASCII'ye dönüştür (PDF uyumluluğu için)
+  const turkishToAscii = (text: string): string => {
+    const map: { [key: string]: string } = {
+      'ç': 'c', 'Ç': 'C',
+      'ğ': 'g', 'Ğ': 'G',
+      'ı': 'i', 'İ': 'I',
+      'ö': 'o', 'Ö': 'O',
+      'ş': 's', 'Ş': 'S',
+      'ü': 'u', 'Ü': 'U'
+    };
+    return text.replace(/[çÇğĞıİöÖşŞüÜ]/g, char => map[char] || char);
+  };
+
   const exportToPDF = () => {
     const doc = new jsPDF();
     
     // Title
     const monthLabel = monthOptions.find(m => m.value === selectedMonth)?.label || selectedMonth;
     doc.setFontSize(18);
-    doc.text(`Personel Gorev Listesi - ${monthLabel}`, 14, 20);
+    doc.text(turkishToAscii(`Personel Gorev Listesi - ${monthLabel}`), 14, 20);
     
     // Date range
     const startDate = new Date(selectedMonth);
     const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
     doc.setFontSize(10);
-    doc.text(`Tarih Araligi: ${format(startDate, 'dd.MM.yyyy')} - ${format(endDate, 'dd.MM.yyyy')}`, 14, 28);
+    doc.text(turkishToAscii(`Tarih Araligi: ${format(startDate, 'dd.MM.yyyy')} - ${format(endDate, 'dd.MM.yyyy')}`), 14, 28);
     
-    // Table data
+    // Table data - Türkçe karakterleri dönüştür
     const tableData = rotations.map(rotation => {
       const user = users.find(u => u.id === rotation.user_id);
       const museum = museums.find(m => m.id === rotation.museum_id);
       return [
-        user?.full_name || 'Bilinmeyen',
-        museum?.name || 'Bilinmeyen',
+        turkishToAscii(user?.full_name || 'Bilinmeyen'),
+        turkishToAscii(museum?.name || 'Bilinmeyen'),
         format(startDate, 'dd.MM.yyyy'),
         format(endDate, 'dd.MM.yyyy'),
       ];
@@ -291,7 +304,7 @@ export const StaffRotationSettings = () => {
 
     autoTable(doc, {
       startY: 35,
-      head: [['Personel Adi', 'Atanan Muze', 'Baslangic', 'Bitis']],
+      head: [[turkishToAscii('Personel Adi'), turkishToAscii('Atanan Muze'), turkishToAscii('Baslangic'), turkishToAscii('Bitis')]],
       body: tableData,
       styles: { fontSize: 10 },
       headStyles: { fillColor: [59, 130, 246] },
@@ -303,7 +316,7 @@ export const StaffRotationSettings = () => {
       doc.setPage(i);
       doc.setFontSize(8);
       doc.text(
-        `Olusturulma: ${format(new Date(), 'dd.MM.yyyy HH:mm')}`,
+        turkishToAscii(`Olusturulma: ${format(new Date(), 'dd.MM.yyyy HH:mm')}`),
         14,
         doc.internal.pageSize.height - 10
       );
