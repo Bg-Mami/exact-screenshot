@@ -92,10 +92,15 @@ const SellTicket = () => {
   }, [selectedMuseum, ticketTypes]);
 
   const fetchData = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     const [typesRes, museumsRes, rolesRes] = await Promise.all([
       supabase.from('ticket_types').select('*').eq('is_active', true).order('created_at'),
       supabase.from('museums').select('*').eq('is_active', true).order('name'),
-      user ? supabase.from('user_roles').select('role').eq('user_id', user.id) : Promise.resolve({ data: [] }),
+      supabase.from('user_roles').select('role').eq('user_id', user.id),
     ]);
 
     if (typesRes.error) toast.error('Bilet türleri yüklenemedi');
@@ -109,19 +114,50 @@ const SellTicket = () => {
     const userRoles = rolesRes.data || [];
     const userIsAdmin = userRoles.some(r => r.role === 'admin');
 
-    // If user is not admin, only show their assigned museum
-    if (!userIsAdmin && profile?.assigned_museum_id) {
-      const assignedMuseum = allMuseums.filter(m => m.id === profile.assigned_museum_id);
-      setMuseums(assignedMuseum);
-      // Auto-select the assigned museum
-      if (assignedMuseum.length === 1) {
-        setSelectedMuseum(assignedMuseum[0].id);
-      }
-    } else {
+    if (userIsAdmin) {
+      // Admins see all museums
       setMuseums(allMuseums);
-      // Auto-select first museum if only one
       if (allMuseums.length === 1) {
         setSelectedMuseum(allMuseums[0].id);
+      }
+    } else {
+      // Non-admins: fetch museums from their assigned museum groups
+      const { data: userGroups } = await supabase
+        .from('user_museum_groups')
+        .select('group_id')
+        .eq('user_id', user.id);
+
+      if (userGroups && userGroups.length > 0) {
+        const groupIds = userGroups.map(g => g.group_id);
+        
+        // Get museum IDs from those groups
+        const { data: groupMembers } = await supabase
+          .from('museum_group_members')
+          .select('museum_id')
+          .in('group_id', groupIds);
+
+        if (groupMembers && groupMembers.length > 0) {
+          const allowedMuseumIds = [...new Set(groupMembers.map(m => m.museum_id))];
+          const filteredMuseums = allMuseums.filter(m => allowedMuseumIds.includes(m.id));
+          setMuseums(filteredMuseums);
+          
+          if (filteredMuseums.length === 1) {
+            setSelectedMuseum(filteredMuseums[0].id);
+          }
+        } else {
+          // User has groups but groups have no museums
+          setMuseums([]);
+        }
+      } else if (profile?.assigned_museum_id) {
+        // Fallback to old single museum assignment
+        const assignedMuseum = allMuseums.filter(m => m.id === profile.assigned_museum_id);
+        setMuseums(assignedMuseum);
+        if (assignedMuseum.length === 1) {
+          setSelectedMuseum(assignedMuseum[0].id);
+        }
+      } else {
+        // No museum groups and no assigned museum
+        setMuseums([]);
       }
     }
     
