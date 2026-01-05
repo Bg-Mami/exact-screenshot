@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen, Search } from 'lucide-react';
+import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen, Search, RefreshCw } from 'lucide-react';
 
 type AppRole = 'admin' | 'cashier';
 type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings' | 'delete_tickets';
@@ -87,6 +87,7 @@ export const UserSettings = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'cashier'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -261,6 +262,37 @@ export const UserSettings = () => {
       fetchData();
     } catch (error) {
       toast.error('Silme işlemi başarısız');
+    }
+  };
+
+  const handleCleanupOrphanUsers = async () => {
+    if (!confirm('Adminler hariç tüm kullanıcıları (hem sistemde hem veritabanında) kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz!')) return;
+
+    setCleaningUp(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cleanup-orphan-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || 'Temizleme başarısız');
+        return;
+      }
+
+      toast.success(result.message || 'Temizleme tamamlandı');
+      fetchData();
+    } catch (error) {
+      toast.error('Temizleme işlemi başarısız');
+    } finally {
+      setCleaningUp(false);
     }
   };
 
@@ -470,13 +502,25 @@ export const UserSettings = () => {
           <Badge variant="secondary">{users.length} kullanıcı</Badge>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 gradient-primary border-0">
-              <Plus className="w-4 h-4" />
-              Kullanıcı Ekle
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleCleanupOrphanUsers}
+            disabled={cleaningUp}
+            className="gap-2 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+          >
+            {cleaningUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Admin Harici Temizle
+          </Button>
+
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 gradient-primary border-0">
+                <Plus className="w-4 h-4" />
+                Kullanıcı Ekle
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Yeni Kullanıcı Ekle</DialogTitle>
@@ -576,6 +620,7 @@ export const UserSettings = () => {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Search and Filter Bar */}
