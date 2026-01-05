@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen } from 'lucide-react';
+import { Loader2, Plus, Users, Trash2, Shield, Key, Building2, UserCog, FolderOpen, Search } from 'lucide-react';
 
 type AppRole = 'admin' | 'cashier';
 type AppPermission = 'sell_tickets' | 'view_reports' | 'manage_staff' | 'manage_museums' | 'manage_sessions' | 'manage_ticket_types' | 'manage_settings' | 'delete_tickets';
@@ -84,6 +84,9 @@ export const UserSettings = () => {
   const [updatingMuseum, setUpdatingMuseum] = useState(false);
   const [updatingRole, setUpdatingRole] = useState(false);
   const [updatingGroups, setUpdatingGroups] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'cashier'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   useEffect(() => {
     fetchData();
@@ -426,12 +429,30 @@ export const UserSettings = () => {
     );
   }
 
+  // Filter users based on search and filters
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = searchQuery === '' || 
+      user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.username.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesRole = roleFilter === 'all' || 
+      (roleFilter === 'admin' && user.roles.includes('admin')) ||
+      (roleFilter === 'cashier' && !user.roles.includes('admin'));
+    
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'active' && user.is_active !== false) ||
+      (statusFilter === 'inactive' && user.is_active === false);
+    
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-primary" />
           <h2 className="text-xl font-semibold text-foreground">Kullanıcı Yönetimi</h2>
+          <Badge variant="secondary">{users.length} kullanıcı</Badge>
         </div>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -542,16 +563,51 @@ export const UserSettings = () => {
         </Dialog>
       </div>
 
-      {users.length === 0 ? (
+      {/* Search and Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="İsim veya kullanıcı adı ile ara..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={roleFilter} onValueChange={(v: 'all' | 'admin' | 'cashier') => setRoleFilter(v)}>
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue placeholder="Rol" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tüm Roller</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="cashier">Gişe</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={(v: 'all' | 'active' | 'inactive') => setStatusFilter(v)}>
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue placeholder="Durum" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tüm Durumlar</SelectItem>
+            <SelectItem value="active">Aktif</SelectItem>
+            <SelectItem value="inactive">Pasif</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filteredUsers.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
             <Users className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-            <p className="text-muted-foreground">Henüz kullanıcı eklenmemiş</p>
+            <p className="text-muted-foreground">
+              {users.length === 0 ? 'Henüz kullanıcı eklenmemiş' : 'Aramayla eşleşen kullanıcı bulunamadı'}
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4">
-          {users.map((user) => {
+          {filteredUsers.map((user) => {
             const isAdmin = user.roles.includes('admin');
             return (
               <Card key={user.id} className={`border-border ${user.is_active === false ? 'opacity-60' : ''}`}>
