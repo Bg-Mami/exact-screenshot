@@ -147,7 +147,7 @@ export const StaffRotationSettings = () => {
       .select('*')
       .eq('rotation_month', prevMonth);
 
-    // Müzeleri slot sayısına göre genişlet
+    // Müzeleri slot sayısına göre genişlet (her müze için staffCount kadar slot)
     const expandedMuseumSlots: { museumId: string; slotIndex: number }[] = [];
     selectedMuseums.forEach(config => {
       for (let i = 0; i < config.staffCount; i++) {
@@ -155,53 +155,77 @@ export const StaffRotationSettings = () => {
       }
     });
 
-    // Build rotation order based on previous assignments
-    const newRotations: { user_id: string; museum_id: string; rotation_order: number }[] = [];
-    
-    // Önceki atamalara göre sıralama
-    const usersWithPrevIndex = users.map(user => {
+    // Her personelin önceki ay hangi müzede olduğunu bul
+    const usersWithPrevMuseum = users.map(user => {
       const prevRotation = prevRotations?.find(r => r.user_id === user.id);
-      let prevSlotIndex = -1;
-      
-      if (prevRotation) {
-        // Önceki müzenin bu ayki slot listesindeki pozisyonunu bul
-        const prevMuseumConfig = selectedMuseums.find(c => c.museumId === prevRotation.museum_id);
-        if (prevMuseumConfig) {
-          const prevMuseumFirstSlot = expandedMuseumSlots.findIndex(s => s.museumId === prevRotation.museum_id);
-          prevSlotIndex = prevMuseumFirstSlot;
-        }
-      }
-      
-      return { user, prevSlotIndex };
+      return { 
+        user, 
+        prevMuseumId: prevRotation?.museum_id || null,
+        prevRotationOrder: prevRotation?.rotation_order ?? 999
+      };
     });
 
-    // Personelleri sırayla müzelere ata
-    usersWithPrevIndex.forEach((item, userIndex) => {
-      let nextSlotIndex = 0;
-      
-      if (item.prevSlotIndex >= 0) {
-        // Bir sonraki slot'a geç
-        nextSlotIndex = (item.prevSlotIndex + 1) % expandedMuseumSlots.length;
-      } else {
-        // İlk atama - sırayla dağıt
-        nextSlotIndex = userIndex % expandedMuseumSlots.length;
+    // Önceki rotasyon sırasına göre sırala
+    usersWithPrevMuseum.sort((a, b) => a.prevRotationOrder - b.prevRotationOrder);
+
+    // Hangi slotlar dolu takip et
+    const slotAssignments: Map<number, string> = new Map();
+    const newRotations: { user_id: string; museum_id: string; rotation_order: number }[] = [];
+
+    // Her personeli sırayla ata
+    usersWithPrevMuseum.forEach((item, userIndex) => {
+      let assignedSlotIndex = -1;
+
+      if (item.prevMuseumId) {
+        // Önceki müzenin slot listesindeki ilk pozisyonunu bul
+        const prevMuseumSlotIndices = expandedMuseumSlots
+          .map((s, idx) => s.museumId === item.prevMuseumId ? idx : -1)
+          .filter(idx => idx >= 0);
+
+        if (prevMuseumSlotIndices.length > 0) {
+          // Bir sonraki slot'a geç (döngüsel)
+          const firstPrevSlot = prevMuseumSlotIndices[0];
+          let nextSlotIndex = (firstPrevSlot + 1) % expandedMuseumSlots.length;
+          
+          // Boş slot bulana kadar dön
+          let attempts = 0;
+          while (slotAssignments.has(nextSlotIndex) && attempts < expandedMuseumSlots.length) {
+            nextSlotIndex = (nextSlotIndex + 1) % expandedMuseumSlots.length;
+            attempts++;
+          }
+          
+          if (!slotAssignments.has(nextSlotIndex)) {
+            assignedSlotIndex = nextSlotIndex;
+          }
+        }
       }
 
-      if (nextSlotIndex < expandedMuseumSlots.length) {
+      // Eğer hala atama yapılmadıysa, ilk boş slotu bul
+      if (assignedSlotIndex === -1) {
+        for (let i = 0; i < expandedMuseumSlots.length; i++) {
+          if (!slotAssignments.has(i)) {
+            assignedSlotIndex = i;
+            break;
+          }
+        }
+      }
+
+      // Atama yap
+      if (assignedSlotIndex >= 0 && assignedSlotIndex < expandedMuseumSlots.length) {
+        slotAssignments.set(assignedSlotIndex, item.user.id);
         newRotations.push({
           user_id: item.user.id,
-          museum_id: expandedMuseumSlots[nextSlotIndex].museumId,
+          museum_id: expandedMuseumSlots[assignedSlotIndex].museumId,
           rotation_order: userIndex,
         });
       }
     });
 
-    // Delete existing rotations for this month (only non-manual ones)
+    // Delete existing rotations for this month
     await supabase
       .from('staff_rotations')
       .delete()
-      .eq('rotation_month', selectedMonth)
-      .eq('is_manual_override', false);
+      .eq('rotation_month', selectedMonth);
 
     // Insert new rotations
     const { error } = await supabase.from('staff_rotations').insert(
@@ -223,17 +247,57 @@ export const StaffRotationSettings = () => {
   };
 
   const applyRotationsToProfiles = async () => {
-    // Update each user's assigned_museum_id based on current month's rotation
     const currentMonthRotations = rotations;
     
+    if (currentMonthRotations.length === 0) {
+      toast.error('Uygulanacak rotasyon bulunamadı');
+      return;
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+
     for (const rotation of currentMonthRotations) {
-      await supabase
+      // 1. assigned_museum_id güncelle
+      const { error: profileError } = await supabase
         .from('profiles')
         .update({ assigned_museum_id: rotation.museum_id })
         .eq('id', rotation.user_id);
+
+      if (profileError) {
+        console.error('Profile update error:', profileError);
+        errorCount++;
+        continue;
+      }
+
+      // 2. user_museums tablosunu güncelle - önce mevcut atamaları sil
+      await supabase
+        .from('user_museums')
+        .delete()
+        .eq('user_id', rotation.user_id);
+
+      // 3. Yeni müze atamasını ekle
+      const { error: museumError } = await supabase
+        .from('user_museums')
+        .insert({
+          user_id: rotation.user_id,
+          museum_id: rotation.museum_id
+        });
+
+      if (museumError) {
+        console.error('User museum insert error:', museumError);
+        errorCount++;
+      } else {
+        successCount++;
+      }
     }
 
-    toast.success('Müze atamaları güncellendi');
+    if (errorCount > 0) {
+      toast.warning(`${successCount} atama başarılı, ${errorCount} atama başarısız`);
+    } else {
+      toast.success(`${successCount} kullanıcının müze ataması güncellendi`);
+    }
+    
     fetchData();
   };
 
