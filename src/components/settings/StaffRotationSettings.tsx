@@ -148,6 +148,7 @@ export const StaffRotationSettings = () => {
       .eq('rotation_month', prevMonth);
 
     // Müzeleri slot sayısına göre genişlet (her müze için staffCount kadar slot)
+    // Örnek: A(2), B(1), C(2) -> [A0, A1, B0, C0, C1] = 5 slot
     const expandedMuseumSlots: { museumId: string; slotIndex: number }[] = [];
     selectedMuseums.forEach(config => {
       for (let i = 0; i < config.staffCount; i++) {
@@ -155,71 +156,71 @@ export const StaffRotationSettings = () => {
       }
     });
 
-    // Her personelin önceki ay hangi müzede olduğunu bul
-    const usersWithPrevMuseum = users.map(user => {
-      const prevRotation = prevRotations?.find(r => r.user_id === user.id);
-      return { 
-        user, 
-        prevMuseumId: prevRotation?.museum_id || null,
-        prevRotationOrder: prevRotation?.rotation_order ?? 999
-      };
-    });
-
-    // Önceki rotasyon sırasına göre sırala
-    usersWithPrevMuseum.sort((a, b) => a.prevRotationOrder - b.prevRotationOrder);
-
-    // Hangi slotlar dolu takip et
-    const slotAssignments: Map<number, string> = new Map();
+    const totalSlotCount = expandedMuseumSlots.length;
+    
+    // Önceki ay rotasyonlarını rotation_order'a göre sırala
+    const sortedPrevRotations = (prevRotations || []).sort((a, b) => a.rotation_order - b.rotation_order);
+    
+    // Yeni rotasyon listesi
     const newRotations: { user_id: string; museum_id: string; rotation_order: number }[] = [];
 
-    // Her personeli sırayla ata
-    usersWithPrevMuseum.forEach((item, userIndex) => {
-      let assignedSlotIndex = -1;
-
-      if (item.prevMuseumId) {
-        // Önceki müzenin slot listesindeki ilk pozisyonunu bul
-        const prevMuseumSlotIndices = expandedMuseumSlots
-          .map((s, idx) => s.museumId === item.prevMuseumId ? idx : -1)
-          .filter(idx => idx >= 0);
-
-        if (prevMuseumSlotIndices.length > 0) {
-          // Bir sonraki slot'a geç (döngüsel)
-          const firstPrevSlot = prevMuseumSlotIndices[0];
-          let nextSlotIndex = (firstPrevSlot + 1) % expandedMuseumSlots.length;
-          
-          // Boş slot bulana kadar dön
-          let attempts = 0;
-          while (slotAssignments.has(nextSlotIndex) && attempts < expandedMuseumSlots.length) {
-            nextSlotIndex = (nextSlotIndex + 1) % expandedMuseumSlots.length;
-            attempts++;
-          }
-          
-          if (!slotAssignments.has(nextSlotIndex)) {
-            assignedSlotIndex = nextSlotIndex;
-          }
+    if (sortedPrevRotations.length > 0) {
+      // DOĞRU MANTIK: Her personel kendi sırasına göre bir sonraki slot'a kayar
+      // Önceki: [0:Ali->A, 1:Veli->A, 2:Ayşe->B, 3:Fatma->C, 4:Mehmet->C]
+      // Yeni:   [0:Ali->B, 1:Veli->C, 2:Ayşe->C, 3:Fatma->A, 4:Mehmet->A]
+      
+      sortedPrevRotations.forEach((prevRot, idx) => {
+        // Bu personel daha önce hangi slot'taydı?
+        const prevSlotIndex = prevRot.rotation_order % totalSlotCount;
+        // Bir sonraki slot'a geç
+        const newSlotIndex = (prevSlotIndex + 1) % totalSlotCount;
+        
+        if (newSlotIndex < expandedMuseumSlots.length) {
+          newRotations.push({
+            user_id: prevRot.user_id,
+            museum_id: expandedMuseumSlots[newSlotIndex].museumId,
+            rotation_order: idx,
+          });
         }
-      }
-
-      // Eğer hala atama yapılmadıysa, ilk boş slotu bul
-      if (assignedSlotIndex === -1) {
+      });
+      
+      // Önceki rotasyonda olmayan yeni personelleri de ekle
+      const prevUserIds = new Set(sortedPrevRotations.map(r => r.user_id));
+      const newUsers = users.filter(u => !prevUserIds.has(u.id));
+      
+      // Hangi slotlar dolu?
+      const usedSlots = new Set(newRotations.map(r => {
+        const slotIdx = expandedMuseumSlots.findIndex(s => s.museumId === r.museum_id);
+        return slotIdx;
+      }));
+      
+      newUsers.forEach((user, idx) => {
+        // İlk boş slotu bul
         for (let i = 0; i < expandedMuseumSlots.length; i++) {
-          if (!slotAssignments.has(i)) {
-            assignedSlotIndex = i;
+          if (!usedSlots.has(i)) {
+            usedSlots.add(i);
+            newRotations.push({
+              user_id: user.id,
+              museum_id: expandedMuseumSlots[i].museumId,
+              rotation_order: sortedPrevRotations.length + idx,
+            });
             break;
           }
         }
-      }
-
-      // Atama yap
-      if (assignedSlotIndex >= 0 && assignedSlotIndex < expandedMuseumSlots.length) {
-        slotAssignments.set(assignedSlotIndex, item.user.id);
-        newRotations.push({
-          user_id: item.user.id,
-          museum_id: expandedMuseumSlots[assignedSlotIndex].museumId,
-          rotation_order: userIndex,
-        });
-      }
-    });
+      });
+      
+    } else {
+      // İlk kez rotasyon oluşturuluyor - personelleri sırayla dağıt
+      users.forEach((user, idx) => {
+        if (idx < expandedMuseumSlots.length) {
+          newRotations.push({
+            user_id: user.id,
+            museum_id: expandedMuseumSlots[idx].museumId,
+            rotation_order: idx,
+          });
+        }
+      });
+    }
 
     // Delete existing rotations for this month
     await supabase
@@ -237,7 +238,7 @@ export const StaffRotationSettings = () => {
     );
 
     if (error) {
-      toast.error('Rotasyon oluşturulamadı');
+      toast.error('Rotasyon oluşturulamadı: ' + error.message);
     } else {
       toast.success('Rotasyonlar oluşturuldu');
       fetchData();
