@@ -9,11 +9,13 @@ import {
   Menu,
   X,
   LogOut,
-  Settings
+  Settings,
+  Download
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
+import { OnlineStatusBadge } from '@/components/OnlineStatusBadge';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -38,6 +40,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: '/gate', label: 'Geçiş Kontrol', icon: QrCode, show: hasPermission('sell_tickets') },
     { path: '/reports', label: 'Raporlar', icon: BarChart3, show: hasPermission('view_reports') },
     { path: '/settings', label: 'Ayarlar', icon: Settings, show: isAdmin },
+    { path: '/install', label: 'Uygulamayı Kur', icon: Download, show: true },
   ].filter(item => item.show);
 
   return (
@@ -163,7 +166,8 @@ export const Layout = ({ children }: LayoutProps) => {
         "transition-all duration-300"
       )}>
         {/* Desktop Top Bar */}
-        <div className="hidden lg:flex items-center justify-end h-16 px-8 border-b border-border">
+        <div className="hidden lg:flex items-center justify-between h-16 px-8 border-b border-border">
+          <OnlineStatusBadge />
           {profile && (
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground">

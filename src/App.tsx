@@ -1,9 +1,12 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { startAutoSync, stopAutoSync } from "@/lib/syncService";
+import { initOfflineDb } from "@/lib/offlineDb";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import SellTicket from "./pages/SellTicket";
@@ -11,10 +14,17 @@ import ValidateTicket from "./pages/ValidateTicket";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import GateControl from "./pages/GateControl";
+import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
+
+// Offline DB ve Auto Sync başlat
+const initOfflineSystem = async () => {
+  await initOfflineDb();
+  startAutoSync(30000); // Her 30 saniyede bir senkronize et
+};
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -44,23 +54,31 @@ const AppRoutes = () => {
       <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/gate" element={<ProtectedRoute><GateControl /></ProtectedRoute>} />
+      <Route path="/install" element={<ProtectedRoute><Install /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <AppRoutes />
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  useEffect(() => {
+    initOfflineSystem();
+    return () => stopAutoSync();
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
