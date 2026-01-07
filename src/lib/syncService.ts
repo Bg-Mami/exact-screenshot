@@ -13,6 +13,11 @@ import {
   getPendingCount,
   getDb,
 } from './offlineDb';
+import { 
+  notifySyncComplete, 
+  notifyOfflineMode, 
+  notifyOnlineMode 
+} from './notificationService';
 import { toast } from 'sonner';
 
 // Online durumu kontrol et
@@ -209,6 +214,7 @@ export const fullSync = async (): Promise<{ tickets: { success: number; failed: 
 
   if (totalSuccess > 0) {
     toast.success(`${totalSuccess} kayıt senkronize edildi`);
+    notifySyncComplete(totalSuccess, totalFailed);
   }
   if (totalFailed > 0) {
     toast.warning(`${totalFailed} kayıt senkronize edilemedi`);
@@ -242,11 +248,13 @@ export const startAutoSync = (intervalMs = 30000) => {
   // Online olunca senkronize et
   window.addEventListener('online', async () => {
     toast.success('İnternet bağlantısı sağlandı');
+    notifyOnlineMode();
     await fullSync();
   });
 
   window.addEventListener('offline', () => {
     toast.warning('İnternet bağlantısı kesildi - Offline modda çalışıyorsunuz');
+    notifyOfflineMode();
   });
 };
 

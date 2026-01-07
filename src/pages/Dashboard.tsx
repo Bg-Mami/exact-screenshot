@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StatsCard } from '@/components/StatsCard';
+import { OfflineSyncWidget } from '@/components/OfflineSyncWidget';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Ticket, TrendingUp, Users, Wallet, Building2, Zap } from 'lucide-react';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { Ticket, TrendingUp, Users, Wallet, Building2, Zap, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as LucideIcons from 'lucide-react';
@@ -18,6 +20,7 @@ const CHART_COLORS = [
 
 const Dashboard = () => {
   const { user, isAdmin, profile } = useAuth();
+  const { isOnline, pendingCount } = useOnlineStatus();
 
   // Fetch user's assigned museums
   const { data: userMuseumIds = [] } = useQuery({
@@ -259,40 +262,66 @@ const Dashboard = () => {
               Bugünkü satış özeti ve istatistikler
             </p>
           </div>
-          <Badge variant="outline" className="gap-1 text-success border-success/50">
-            <Zap className="w-3 h-3" />
-            Canlı
-          </Badge>
+          <div className="flex items-center gap-2">
+            {!isOnline && (
+              <Badge variant="secondary" className="gap-1 bg-warning/20 text-warning border-warning">
+                <WifiOff className="w-3 h-3" />
+                Offline
+              </Badge>
+            )}
+            {pendingCount > 0 && (
+              <Badge variant="secondary" className="gap-1 bg-primary/20 text-primary border-primary">
+                {pendingCount} bekliyor
+              </Badge>
+            )}
+            <Badge variant="outline" className={cn(
+              "gap-1",
+              isOnline ? "text-success border-success/50" : "text-warning border-warning/50"
+            )}>
+              <Zap className="w-3 h-3" />
+              {isOnline ? 'Canlı' : 'Offline'}
+            </Badge>
+          </div>
         </div>
 
-        {/* Main Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatsCard
-            title="Toplam Satış"
-            value={todayStats?.total || 0}
-            subtitle="Bugün satılan bilet"
-            icon={Ticket}
-            variant="primary"
-          />
-          <StatsCard
-            title="Toplam Gelir"
-            value={`₺${(todayStats?.revenue || 0).toLocaleString('tr-TR')}`}
-            subtitle="Bugünkü hasılat"
-            icon={Wallet}
-            variant="success"
-          />
-          <StatsCard
-            title="Aktif Personel"
-            value={staffData?.active || 0}
-            subtitle={`${staffData?.total || 0} personelden`}
-            icon={Users}
-          />
-          <StatsCard
-            title="Toplam Bilet"
-            value={totalTickets}
-            subtitle="Tüm zamanlar"
-            icon={TrendingUp}
-          />
+        {/* Offline Sync Widget */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+          <div className="lg:col-span-2">
+            {/* Main Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <StatsCard
+                title="Toplam Satış"
+                value={todayStats?.total || 0}
+                subtitle="Bugün satılan bilet"
+                icon={Ticket}
+                variant="primary"
+              />
+              <StatsCard
+                title="Toplam Gelir"
+                value={`₺${(todayStats?.revenue || 0).toLocaleString('tr-TR')}`}
+                subtitle="Bugünkü hasılat"
+                icon={Wallet}
+                variant="success"
+              />
+              <StatsCard
+                title="Aktif Personel"
+                value={staffData?.active || 0}
+                subtitle={`${staffData?.total || 0} personelden`}
+                icon={Users}
+              />
+              <StatsCard
+                title="Toplam Bilet"
+                value={totalTickets}
+                subtitle="Tüm zamanlar"
+                icon={TrendingUp}
+              />
+            </div>
+          </div>
+          
+          {/* Offline Sync Widget */}
+          <div className="lg:col-span-1">
+            <OfflineSyncWidget />
+          </div>
         </div>
 
         {/* Museum Sales Chart */}
