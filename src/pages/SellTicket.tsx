@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/hooks/useAuth';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { QRCodeSVG } from 'qrcode.react';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Printer, RefreshCw, X, Minus, Plus, ChevronLeft, ChevronRight, ShoppingCart, Trash2, AlertTriangle, Clock } from 'lucide-react';
+import { Printer, RefreshCw, X, Minus, Plus, ChevronLeft, ChevronRight, ShoppingCart, Trash2, AlertTriangle, Clock, WifiOff } from 'lucide-react';
+import { 
+  addPendingTicket, 
+  getCachedMuseums, 
+  getCachedTicketTypes, 
+  getCachedMuseumPrices, 
+  getCachedSessions,
+  type CachedMuseum,
+  type CachedTicketType,
+  type CachedMuseumPrice,
+  type CachedSession
+} from '@/lib/offlineDb';
 
 interface TicketType {
   id: string;
@@ -73,24 +85,116 @@ const SellTicket = () => {
   const [currentTicketIndex, setCurrentTicketIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selling, setSelling] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
   const { user, profile } = useAuth();
+  const { isOnline } = useOnlineStatus();
 
   const isAdmin = profile?.id ? true : false; // Will be updated with role check
 
   useEffect(() => {
-    fetchData();
-  }, [profile]);
+    if (isOnline) {
+      setOfflineMode(false);
+      fetchData();
+    } else {
+      setOfflineMode(true);
+      loadOfflineData();
+    }
+  }, [profile, isOnline]);
 
   useEffect(() => {
     if (selectedMuseum) {
-      fetchSessions(selectedMuseum);
-      fetchMuseumPrices(selectedMuseum);
+      if (isOnline && !offlineMode) {
+        fetchSessions(selectedMuseum);
+        fetchMuseumPrices(selectedMuseum);
+      } else {
+        loadOfflineSessions(selectedMuseum);
+        loadOfflinePrices(selectedMuseum);
+      }
     } else {
       setSessions([]);
       setSelectedSession('');
       setDisplayTicketTypes(ticketTypes);
     }
-  }, [selectedMuseum, ticketTypes]);
+  }, [selectedMuseum, ticketTypes, isOnline, offlineMode]);
+
+  // Offline veri yükleme fonksiyonları
+  const loadOfflineData = async () => {
+    try {
+      const [cachedMuseums, cachedTypes] = await Promise.all([
+        getCachedMuseums(),
+        getCachedTicketTypes(),
+      ]);
+
+      const museumsList: Museum[] = cachedMuseums.map(m => ({ id: m.id, name: m.name }));
+      const typesList: TicketType[] = cachedTypes.map(t => ({
+        id: t.id,
+        name: t.name,
+        type_key: t.type_key,
+        price: t.price,
+        color: t.color,
+        icon: t.icon,
+        is_active: t.is_active,
+        credits: t.credits,
+        is_combo: t.is_combo,
+      }));
+
+      setMuseums(museumsList);
+      setTicketTypes(typesList);
+      setDisplayTicketTypes(typesList);
+
+      if (museumsList.length === 1) {
+        setSelectedMuseum(museumsList[0].id);
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Offline data load error:', err);
+      toast.error('Offline veri yüklenemedi');
+      setLoading(false);
+    }
+  };
+
+  const loadOfflineSessions = async (museumId: string) => {
+    try {
+      const cachedSessions = await getCachedSessions(museumId);
+      const sessionsList: Session[] = cachedSessions.map(s => ({
+        id: s.id,
+        museum_id: s.museum_id,
+        session_date: s.session_date,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        capacity: s.capacity,
+        sold_count: s.sold_count,
+      }));
+      setSessions(sessionsList);
+    } catch (err) {
+      console.error('Offline sessions load error:', err);
+    }
+  };
+
+  const loadOfflinePrices = async (museumId: string) => {
+    try {
+      const cachedPrices = await getCachedMuseumPrices(museumId);
+      const priceMap = new Map<string, number>();
+      cachedPrices.forEach(p => priceMap.set(p.ticket_type_id, p.price));
+
+      if (cachedPrices.length === 0) {
+        setDisplayTicketTypes([]);
+        return;
+      }
+
+      const filteredTypes = ticketTypes
+        .filter(type => priceMap.has(type.id))
+        .map(type => ({
+          ...type,
+          price: priceMap.get(type.id)!
+        }));
+
+      setDisplayTicketTypes(filteredTypes);
+    } catch (err) {
+      console.error('Offline prices load error:', err);
+    }
+  };
 
   const fetchData = async () => {
     if (!user) {
@@ -349,7 +453,7 @@ const SellTicket = () => {
     }
 
     // Check session capacity if session selected
-    if (selectedSession) {
+    if (selectedSession && selectedSession !== 'none') {
       const session = sessions.find(s => s.id === selectedSession);
       if (session) {
         const remaining = session.capacity - session.sold_count;
@@ -372,41 +476,72 @@ const SellTicket = () => {
         
         for (let i = 0; i < item.quantity; i++) {
           const qrCode = generateQRCode();
-          
-          const { data, error } = await supabase.from('tickets').insert({
-            ticket_type_id: item.ticketTypeId,
-            museum_id: selectedMuseum,
-            session_id: selectedSession && selectedSession !== 'none' ? selectedSession : null,
-            qr_code: qrCode,
-            price: ticketType.price,
-            sold_by: user!.id,
-            remaining_credits: credits,
-          }).select().single();
+          const ticketId = crypto.randomUUID();
+          const createdAt = new Date().toISOString();
 
-          if (error) throw error;
+          if (isOnline && !offlineMode) {
+            // Online satış
+            const { data, error } = await supabase.from('tickets').insert({
+              ticket_type_id: item.ticketTypeId,
+              museum_id: selectedMuseum,
+              session_id: selectedSession && selectedSession !== 'none' ? selectedSession : null,
+              qr_code: qrCode,
+              price: ticketType.price,
+              sold_by: user!.id,
+              remaining_credits: credits,
+            }).select().single();
 
-          tickets.push({
-            id: data.id,
-            qr_code: data.qr_code,
-            price: data.price,
-            ticket_type: ticketType,
-            museum,
-            session,
-            created_at: data.created_at,
-            remaining_credits: data.remaining_credits,
-          });
+            if (error) throw error;
+
+            tickets.push({
+              id: data.id,
+              qr_code: data.qr_code,
+              price: data.price,
+              ticket_type: ticketType,
+              museum,
+              session,
+              created_at: data.created_at,
+              remaining_credits: data.remaining_credits,
+            });
+          } else {
+            // Offline satış - local db'ye kaydet
+            await addPendingTicket({
+              id: ticketId,
+              qr_code: qrCode,
+              ticket_type_id: item.ticketTypeId,
+              museum_id: selectedMuseum,
+              session_id: selectedSession && selectedSession !== 'none' ? selectedSession : null,
+              price: ticketType.price,
+              sold_by: user!.id,
+              remaining_credits: credits,
+              created_at: createdAt,
+              synced: false,
+            });
+
+            tickets.push({
+              id: ticketId,
+              qr_code: qrCode,
+              price: ticketType.price,
+              ticket_type: ticketType,
+              museum,
+              session,
+              created_at: createdAt,
+              remaining_credits: credits,
+            });
+          }
         }
       }
 
       setGeneratedTickets(tickets);
       setCurrentTicketIndex(0);
       
-      toast.success(`${totalTickets} adet bilet başarıyla satıldı!`, {
+      const modeText = offlineMode ? ' (Offline - Sonra senkronize edilecek)' : '';
+      toast.success(`${totalTickets} adet bilet başarıyla satıldı!${modeText}`, {
         description: `Toplam: ₺${totalPrice}`,
       });
 
-      // Refresh sessions to update sold count
-      if (selectedSession) {
+      // Refresh sessions to update sold count (only online)
+      if (selectedSession && isOnline && !offlineMode) {
         fetchSessions(selectedMuseum);
       }
     } catch (error: any) {
@@ -445,10 +580,20 @@ const SellTicket = () => {
       <div className="space-y-8">
         {/* Header */}
         <div className="animate-fade-in">
-          <h1 className="text-3xl font-bold text-foreground">Bilet Satış</h1>
-          <p className="text-muted-foreground mt-1">
-            Müze ve seans seçin, biletleri sepete ekleyin
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Bilet Satış</h1>
+              <p className="text-muted-foreground mt-1">
+                Müze ve seans seçin, biletleri sepete ekleyin
+              </p>
+            </div>
+            {offlineMode && (
+              <Badge variant="secondary" className="gap-1 bg-warning/20 text-warning border-warning">
+                <WifiOff className="w-3 h-3" />
+                Offline Mod
+              </Badge>
+            )}
+          </div>
         </div>
 
         {generatedTickets.length > 0 ? (
