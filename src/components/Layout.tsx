@@ -10,7 +10,8 @@ import {
   X,
   LogOut,
   Settings,
-  Download
+  Download,
+  Monitor
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -39,6 +40,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { path: '/validate', label: 'Bilet Doğrulama', icon: QrCode, show: hasPermission('sell_tickets') },
     { path: '/gate', label: 'Geçiş Kontrol', icon: QrCode, show: hasPermission('sell_tickets') },
     { path: '/reports', label: 'Raporlar', icon: BarChart3, show: hasPermission('view_reports') },
+    { path: '/online-sales', label: 'Online Satışlar', icon: Monitor, show: hasPermission('view_reports') },
     { path: '/settings', label: 'Ayarlar', icon: Settings, show: isAdmin },
     { path: '/install', label: 'Uygulamayı Kur', icon: Download, show: true },
   ].filter(item => item.show);
