@@ -15,6 +15,7 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import GateControl from "./pages/GateControl";
 import Install from "./pages/Install";
+import PublicTicketSales from "./pages/PublicTicketSales";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -48,6 +49,8 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/auth" element={<Auth />} />
+      <Route path="/kiosk" element={<PublicTicketSales />} />
+      <Route path="/online-satis" element={<PublicTicketSales />} />
       <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
       <Route path="/sell" element={<ProtectedRoute><SellTicket /></ProtectedRoute>} />
       <Route path="/validate" element={<ProtectedRoute><ValidateTicket /></ProtectedRoute>} />
