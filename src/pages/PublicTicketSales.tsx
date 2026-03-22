@@ -75,7 +75,7 @@ const PublicTicketSales = () => {
   const [purchasedTickets, setPurchasedTickets] = useState<PurchasedTicket[]>([]);
   const [showTickets, setShowTickets] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [idleTimer, setIdleTimer] = useState<NodeJS.Timeout | null>(null);
+  const [idleTimer, setIdleTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   // Fullscreen toggle
   const toggleFullscreen = useCallback(() => {

@@ -224,7 +224,7 @@ export const fullSync = async (): Promise<{ tickets: { success: number; failed: 
 };
 
 // Otomatik senkronizasyon başlat
-let syncInterval: NodeJS.Timeout | null = null;
+let syncInterval: ReturnType<typeof setInterval> | null = null;
 
 export const startAutoSync = (intervalMs = 30000) => {
   if (syncInterval) {
